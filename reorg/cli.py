@@ -15,8 +15,14 @@ from .model_client import LiveClient, ReplayClient, record
 
 
 def _w(run: Path, name: str, obj) -> None:
+    """Write one stage artifact. Strings as-is; dicts as JSON; pydantic models via model_dump."""
     run.mkdir(parents=True, exist_ok=True)
-    data = obj if isinstance(obj, str) else json.dumps(obj if isinstance(obj, dict) else obj.model_dump(mode="json"), indent=2)
+    if isinstance(obj, str):
+        data = obj
+    elif isinstance(obj, dict):
+        data = json.dumps(obj, indent=2)
+    else:
+        data = json.dumps(obj.model_dump(mode="json"), indent=2)
     (run / name).write_text(data)
     print(f"  wrote {run / name}")
 

@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult,
-                             ReorgIntent, missing_required, validate_spans)
+                             ReorgIntent, missing_required, sha256_of, validate_spans)
 from reorg.model_client import ReplayClient, ReplayMismatch, recording_key, record
 
 
@@ -91,8 +91,8 @@ def test_fingerprint_ignores_status_and_id_but_not_content():
 
 def test_replay_refuses_a_different_input(tmp_path):
     meta = {"key": recording_key("sys", "msg A"), "schema_version": "extraction-v1",
-            "input_sha256": __import__("reorg.contracts", fromlist=["sha256_of"]).sha256_of("msg A"),
-            "prompt_sha256": __import__("reorg.contracts", fromlist=["sha256_of"]).sha256_of("sys"),
+            "input_sha256": sha256_of("msg A"),
+            "prompt_sha256": sha256_of("sys"),
             "raw": {"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]}, "changes": []}}
     record(meta, tmp_path)
     ok, _ = ReplayClient(tmp_path).extract("sys", "msg A")
