@@ -1,14 +1,88 @@
 {
-  "_todo": "PHASE 1 — Andrew writes this BEFORE the model runs. It is the independent reference the Extractor's output is diffed against.",
-  "_shape": "An ExtractionResult (reorg/contracts.py): effective_date + changes[]. Each field is CITED {entity_type, mention, source_span:[start,end)} or UNRESOLVED {entity_type, unresolved:true, question}. Spans index fixtures/msg_jordan.txt AFTER redaction ($215K → [COMP_1]) — run `make redacted` to print it with offsets. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
+  "_what": "The ANSWER KEY. Written by Andrew from Jordan's message BEFORE the model runs. Phase 2 diffs the model's output against this. Not shown in the demo; it is how we know the extractor is correct.",
+  "_how": "For each field write the exact words as `mention` (make check1 fills in source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: see contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
   "_settled_semantics": {
-    "population": "TEAM_MOVE moves every worker in org_data_platform (7, Priya included). '6 eng' is a CLAIM the Validator checks against reference, not the population.",
-    "open_reqs": "one HEADCOUNT_SHIFT with open_reqs {entity_type:req, mention:'2 open reqs', quantity:2}; the Resolver fills resolved_ids from reference.",
-    "funding": "funding_cc = 'Infra's budget', funding_until = 'end of Q4'. The destination after Q4 is NOT stated → leave to the Validator (WARNING), not an extracted guess.",
-    "dates": "'Oct 1' → entity_type date, mention 'Oct 1'. Year is inferred later from SourceRecord.sent_at (2026-09-21), never from the machine clock.",
-    "target_cc": "no mention → UNRESOLVED with a question. Never invented.",
-    "sam": "mention 'Sam' only. Identity is the Resolver's job; expected output records the mention, not an id."
+    "population": "TEAM_MOVE moves every worker in org_data_platform (7, Priya included). '6 eng' is a claim the Validator checks, not the population.",
+    "open_reqs": "one HEADCOUNT_SHIFT with open_reqs {mention:'2 open reqs', quantity:2}.",
+    "funding": "funding_cc = the words for Infra's budget; funding_until = 'end of Q4'. After Q4 is NOT stated -> not extracted.",
+    "dates": "'Oct 1' as written. Year is inferred later from SourceRecord.sent_at.",
+    "target_cc": "no words for it -> unresolved + question. Never invented.",
+    "sam": "mention 'Sam' only. Identity is the Resolver's job."
   },
-  "effective_date": {},
-  "changes": []
+  "effective_date": {
+    "entity_type": "date",
+    "mention": "Oct 1",
+    "source_span": [
+      21,
+      26
+    ]
+  },
+  "changes": [
+    {
+      "_example": "WORKED EXAMPLE \u2014 change [1] done for you. The other four follow the same shape.",
+      "kind": "TEAM_MOVE",
+      "fields": {
+        "team": {
+          "entity_type": "org",
+          "mention": "Priya's Data Platform team",
+          "source_span": [
+            28,
+            54
+          ]
+        },
+        "from_org": {
+          "entity_type": "org",
+          "mention": "Infra",
+          "source_span": [
+            92,
+            97
+          ]
+        },
+        "from_leader": {
+          "entity_type": "worker",
+          "mention": "Marcus",
+          "source_span": [
+            104,
+            110
+          ]
+        },
+        "to_org": {
+          "entity_type": "org",
+          "mention": "Product Eng",
+          "source_span": [
+            119,
+            130
+          ]
+        },
+        "to_leader": {
+          "entity_type": "worker",
+          "mention": "Dana",
+          "source_span": [
+            137,
+            141
+          ]
+        }
+      }
+    },
+    {
+      "_todo": "[2] COST_CENTER_SPLIT \u2014 source_cc: which words? target_cc: is there any text naming it? (see _settled_semantics.target_cc)",
+      "kind": "COST_CENTER_SPLIT",
+      "fields": {}
+    },
+    {
+      "_todo": "[3] HEADCOUNT_SHIFT \u2014 team, open_reqs (with quantity), funding_cc, funding_until. 'open reqs' appears twice: which occurrence is the headcount claim? (add \"occurrence\": 2 if the second)",
+      "kind": "HEADCOUNT_SHIFT",
+      "fields": {}
+    },
+    {
+      "_todo": "[4] MANAGER_CHANGE \u2014 worker: 'Sam' (occurrence 1), new_manager: which 'Priya'? (occurrence?)",
+      "kind": "MANAGER_CHANGE",
+      "fields": {}
+    },
+    {
+      "_todo": "[5] COMP_CHANGE \u2014 worker: 'Sam' (occurrence 2), new_band, new_comp: the token exactly as it appears in the redacted text",
+      "kind": "COMP_CHANGE",
+      "fields": {}
+    }
+  ]
 }
