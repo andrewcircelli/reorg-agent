@@ -29,3 +29,9 @@ clean:
 # Print the redacted Jordan message with character offsets (for writing intent_expected.json spans).
 redacted:
 	$(PY) -c "from reorg import intake, redact; r,_=redact.redact(intake.capture(\"fixtures/msg_jordan.txt\")); t=r.text; print(t); print(); [print(f\"{i:4} {t[i:i+40]!r}\") for i in range(0,len(t),40)]"
+
+probe0:
+	PYTHONPATH=. $(PY) probes/phase0.py
+
+check1:
+	PYTHONPATH=. $(PY) probes/phase1_check.py
