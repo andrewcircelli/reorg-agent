@@ -19,9 +19,15 @@ def _steps(doc):
     return [StepDef.model_validate(s) for s in doc["steps"]]
 
 
-def _order(steps, intent):
-    plan = compile_mod.compile_plan(intent, steps, version="test")
-    return [s.step_id for w in plan.waves for s in w]
+def _wave_of(steps, intent):
+    plan = compile_mod.compile_plan(intent, steps, version="test", reference_sha256="test")
+    return {s.step_id: i for i, w in enumerate(plan.waves) for s in w}
+
+
+def gl_precedes_workers(wave_of) -> bool:
+    """The safety invariant: GL mapping must complete in a strictly earlier wave than worker
+    reassignment. Same-wave is NOT safe regardless of list order."""
+    return wave_of["finance.map_gl"] < wave_of["hris.reassign_workers"]
 
 
 @pytest.fixture
@@ -37,8 +43,7 @@ def test_registry_loads():
 
 def test_gl_mapping_precedes_worker_reassignment(jordan_intent):
     steps, _ = compile_mod.load_registry(REG)
-    order = _order(steps, jordan_intent)
-    assert order.index("finance.map_gl") < order.index("hris.reassign_workers")
+    assert gl_precedes_workers(_wave_of(steps, jordan_intent))
 
 
 def test_deleting_the_edge_produces_their_exact_bug(jordan_intent):
@@ -50,9 +55,9 @@ def test_deleting_the_edge_produces_their_exact_bug(jordan_intent):
     for s in broken["steps"]:
         if s["id"] == "hris.reassign_workers":
             s["requires"].remove("finance.map_gl")
-    order = _order(_steps(broken), jordan_intent)
-    assert order.index("finance.map_gl") > order.index("hris.reassign_workers"), \
-        "expected the broken registry to produce the bug — if it doesn't, the test isn't testing the edge"
+    # This test PASSES by demonstrating that the invariant detects the unsafe registry.
+    assert not gl_precedes_workers(_wave_of(_steps(broken), jordan_intent)), \
+        "expected the broken registry to violate the invariant — if it doesn't, the test isn't testing the edge"
 
 
 def test_no_cycles_and_no_missing_dependencies():

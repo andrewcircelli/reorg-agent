@@ -1,15 +1,14 @@
 {
-  "_todo": "PHASE 1 — Andrew writes this BEFORE the model runs. It is the independent reference the Extractor is checked against.",
-  "_shape": "Follow reorg/contracts.py ReorgIntent. Every field: entity_type, mention, source_span [start,end] into fixtures/msg_jordan.txt AFTER redaction ($215K → [COMP_1]), OR unresolved:true + question. Never a guess.",
-  "_traps_to_encode": [
-    "COST_CENTER_SPLIT target: no mention → unresolved + question",
-    "MANAGER_CHANGE worker 'Sam': mention only; Resolver will find 2 in scope → the expected file records mention, not an id",
-    "HEADCOUNT_SHIFT: 2 open reqs, funding 'Infra's budget' through end of Q4 — a separate change, not a note on TEAM_MOVE",
-    "COMP_CHANGE: band L5, comp mention is the token [COMP_1] verbatim",
-    "effective_date: 'Oct 1' → entity_type date, mention 'Oct 1'"
-  ],
-  "id": "TODO",
-  "source_id": "TODO",
+  "_todo": "PHASE 1 — Andrew writes this BEFORE the model runs. It is the independent reference the Extractor's output is diffed against.",
+  "_shape": "An ExtractionResult (reorg/contracts.py): effective_date + changes[]. Each field is CITED {entity_type, mention, source_span:[start,end)} or UNRESOLVED {entity_type, unresolved:true, question}. Spans index fixtures/msg_jordan.txt AFTER redaction ($215K → [COMP_1]) — run `make redacted` to print it with offsets. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
+  "_settled_semantics": {
+    "population": "TEAM_MOVE moves every worker in org_data_platform (7, Priya included). '6 eng' is a CLAIM the Validator checks against reference, not the population.",
+    "open_reqs": "one HEADCOUNT_SHIFT with open_reqs {entity_type:req, mention:'2 open reqs', quantity:2}; the Resolver fills resolved_ids from reference.",
+    "funding": "funding_cc = 'Infra's budget', funding_until = 'end of Q4'. The destination after Q4 is NOT stated → leave to the Validator (WARNING), not an extracted guess.",
+    "dates": "'Oct 1' → entity_type date, mention 'Oct 1'. Year is inferred later from SourceRecord.sent_at (2026-09-21), never from the machine clock.",
+    "target_cc": "no mention → UNRESOLVED with a question. Never invented.",
+    "sam": "mention 'Sam' only. Identity is the Resolver's job; expected output records the mention, not an id."
+  },
   "effective_date": {},
   "changes": []
 }

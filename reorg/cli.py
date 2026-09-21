@@ -13,8 +13,6 @@ from . import extract, gate, intake, redact, resolve, validate
 from .contracts import Finding, ReorgIntent, SourceRecord, now_iso
 from .model_client import LiveClient, ReplayClient, record
 
-RECORDING = "fixtures/recorded/msg_jordan.json"
-
 
 def _w(run: Path, name: str, obj) -> None:
     run.mkdir(parents=True, exist_ok=True)
@@ -41,13 +39,15 @@ def cmd_intake(a):
     red, mapping = redact.redact(src)
     _w(run, "02_redacted.json", red)
     _w(run, "02_redaction_map.local.json", mapping)   # never leaves this directory
-    client = LiveClient() if a.live else ReplayClient(RECORDING)
-    intent, meta = extract.extract(red, client)
-    _w(run, "03_intent.json", intent)
+    client = LiveClient() if a.live else ReplayClient()
+    result, meta = extract.extract(red, client)
+    _w(run, "03_extraction.json", result)          # exactly what the model produced
     _w(run, "03_model_meta.json", meta)
+    intent = extract.to_intent(result, red, src.sent_at)
+    _w(run, "03_intent.json", intent)               # workflow state, minted here — not by the model
     if a.record:
-        record(meta, a.record)
-        print(f"  recorded model response → {a.record}")
+        p = record(meta)
+        print(f"  recorded model response → {p}")
     print(f"\nReorgIntent {intent.id}  ({'LIVE ' + meta.get('model', '') if a.live else 'replay'})")
     _print_intent(intent, red.text)
 
@@ -56,15 +56,16 @@ def cmd_validate(a):
     run = Path(a.run)
     intent = ReorgIntent.model_validate(_r(run, "03_intent.json"))
     if a.resolve:
-        intent = _apply_resolutions(intent, dict(kv.split("=", 1) for kv in a.resolve))
+        intent = _apply_resolutions(intent, a.resolve)
     ref = _reference()
     intent = resolve.resolve(intent, ref)
     src = SourceRecord.model_validate(_r(run, "01_source.json"))
-    findings = validate.validate(intent, ref, src.raw_text)
+    red_text = _r(run, "02_redacted.json")["text"]      # spans index the REDACTED text
+    findings = validate.validate(intent, ref, red_text)
     intent.status = gate.status_for(findings)
     _w(run, "04_resolved.json", intent)
     _w(run, "05_findings.json", {"findings": [f.model_dump(mode="json") for f in findings]})
-    packet = gate.render_packet(intent, findings, src.raw_text, _r(run, "02_redaction_map.local.json"))
+    packet = gate.render_packet(intent, findings, red_text, _r(run, "02_redaction_map.local.json"))
     _w(run, "06_packet.md", packet)
     print()
     for f in findings:
@@ -109,12 +110,21 @@ def cmd_compile(a):
         print(f"  ⚠ {w}")
 
 
-def _apply_resolutions(intent: ReorgIntent, kv: dict[str, str]) -> ReorgIntent:
-    """Demo shortcut for Jordan's follow-up answers. Production: a second SourceRecord."""
-    for ch in intent.changes:
-        for name, f in ch.fields.items():
-            if f.unresolved and name in kv:
-                f.resolved_id, f.unresolved, f.question = kv[name], False, None
+def _apply_resolutions(intent: ReorgIntent, items: list[str]) -> ReorgIntent:
+    """Demo shortcut for Jordan's follow-up answers, scoped to one change and field:
+    --resolve 4.worker=10422   (1-based change index, field name, canonical id).
+    Production: a second SourceRecord with its own provenance."""
+    for item in items:
+        ref, value = item.split("=", 1)
+        idx, name = ref.split(".", 1)
+        ch = intent.changes[int(idx) - 1]
+        if name not in ch.fields:
+            raise SystemExit(f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}'")
+        f = ch.fields[name]
+        f.resolved_id, f.candidates = value, None
+        if f.unresolved:                       # missing-text case: now supplied by a person
+            f.unresolved, f.question, f.mention = False, None, value
+            f.source_span = f.source_span or [0, 0]
     return intent
 
 
@@ -135,7 +145,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="reorg")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("intake"); s.add_argument("message"); s.add_argument("--run", required=True)
-    s.add_argument("--live", action="store_true"); s.add_argument("--record"); s.set_defaults(fn=cmd_intake)
+    s.add_argument("--live", action="store_true"); s.add_argument("--record", action="store_true"); s.set_defaults(fn=cmd_intake)
     s = sub.add_parser("validate"); s.add_argument("run"); s.add_argument("--resolve", action="append"); s.set_defaults(fn=cmd_validate)
     s = sub.add_parser("approve"); s.add_argument("run"); s.add_argument("--as", dest="as_", required=True); s.add_argument("--role"); s.set_defaults(fn=cmd_approve)
     s = sub.add_parser("compile"); s.add_argument("run"); s.add_argument("--registry", default="registry/steps.yaml"); s.set_defaults(fn=cmd_compile)
