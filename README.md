@@ -184,4 +184,6 @@ the contracts caught before they mattered.
 
 ## Time spent
 
-_(Andrew: actual hours, split between build and review. To be filled in before sending.)_
+Roughly five hours against a three-to-four hour budget: about 2h15 on problem modelling and design,
+an hour of rework caused by settling the scope too late, 45 minutes of implementation, and an hour
+of review and verification. The breakdown, and what the rework cost, is in `AI-USAGE.md`.
