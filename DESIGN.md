@@ -91,6 +91,12 @@ rather than mishandled if more arrive; simulated approver identity; fixture refe
 in for reads from the systems of record; and one fixture message, which is one test case rather than
 an accuracy claim.
 
+The message's **sender, channel and date are stubbed too**, since the fixture is a text file and the
+channel connectors are not built — in production they come from the event itself. Worth naming
+because two design properties read them: the year for a date like "Oct 1" comes from when the message
+was sent rather than from today's clock, and the gate refuses an approver who is the person who sent
+the message. Both behave correctly; both are currently fed a constant.
+
 ---
 
 ## Approach and design

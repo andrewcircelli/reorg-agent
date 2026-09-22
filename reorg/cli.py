@@ -62,7 +62,10 @@ def _approvals(run: Path) -> list:
     return [Approval.model_validate(a) for a in json.loads(path.read_text())["approvals"]]
 
 
-def cmd_intake(a):
+def cmd_capture(a):
+    """The first three stages in one command: take the message in, hide the pay figures, and make
+    the one model call. Named `capture` rather than `intake` because it runs more than Intake —
+    it is the first of the four words the design uses: capture, validate, approve, compile."""
     run = Path(a.run)
     src = intake.capture(a.message)
     _w(run, "01_source.json", src)
@@ -234,8 +237,8 @@ def _print_intent(intent: ReorgIntent, text: str) -> None:
 def main(argv=None):
     p = argparse.ArgumentParser(prog="reorg")
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("intake"); s.add_argument("message"); s.add_argument("--run", required=True)
-    s.add_argument("--live", action="store_true"); s.add_argument("--record", action="store_true"); s.set_defaults(fn=cmd_intake)
+    s = sub.add_parser("capture"); s.add_argument("message"); s.add_argument("--run", required=True)
+    s.add_argument("--live", action="store_true"); s.add_argument("--record", action="store_true"); s.set_defaults(fn=cmd_capture)
     s = sub.add_parser("validate"); s.add_argument("run"); s.add_argument("--resolve", action="append"); s.set_defaults(fn=cmd_validate)
     s = sub.add_parser("approve"); s.add_argument("run"); s.add_argument("--as", dest="as_", required=True); s.add_argument("--role"); s.set_defaults(fn=cmd_approve)
     s = sub.add_parser("compile"); s.add_argument("run"); s.add_argument("--registry", default="registry/steps.yaml"); s.set_defaults(fn=cmd_compile)

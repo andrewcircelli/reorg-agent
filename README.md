@@ -165,6 +165,11 @@ If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.
 - **Identities are simulated.** The approver is whatever name is typed after `--as`. There is no
   login and no identity provider; what is demonstrated is where the boundary sits and what it binds
   to, not authentication.
+- **The message's sender, channel and date are stubbed**, because the fixture is a text file and
+  channel connectors are not built. In production they come from the event — a Slack message carries
+  its sender and timestamp. Two checks depend on them and both currently read a constant: the year
+  for "Oct 1" comes from the message's date rather than today's clock, and the gate refuses an
+  approver who is the person that sent the message.
 - **Reference data is a small fixture**, standing in for reads from the systems of record.
 - **The run directory is inspectable, not tamper-proof.** Hashes do not make a folder append-only.
 - **One fixture message is one test case**, not an accuracy claim. Growing that set from real

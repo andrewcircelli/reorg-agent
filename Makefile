@@ -26,11 +26,11 @@ guard:
 ### Show the system working
 
 extract: guard  ## The main beat: read the message, then check the result against the answer key
-	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/extract $(if $(LIVE),--live --record,)
+	$(PY) -m reorg.cli capture fixtures/msg_jordan.txt --run runs/extract $(if $(LIVE),--live --record,)
 	PYTHONPATH=. $(PY) probes/diff_extraction.py runs/extract
 
 demo: guard  ## The whole arc, capture through approval to a compiled plan
-	$(PY) -m reorg.cli intake   fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
+	$(PY) -m reorg.cli capture  fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
 	$(PY) -m reorg.cli validate $(RUN)
 	-$(PY) -m reorg.cli approve  $(RUN) --as dana.finance --role finance
 	$(PY) -m reorg.cli validate $(RUN) --resolve 2.worker=10422 --resolve 1.target_cc=4410
