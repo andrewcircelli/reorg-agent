@@ -5,7 +5,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult,
+from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult, Field,
                              ReorgIntent, missing_required, sha256_of, validate_spans)
 from reorg.model_client import ReplayClient, ReplayMismatch, recording_key, record
 
@@ -104,3 +104,28 @@ def test_replay_refuses_a_different_input(tmp_path):
     assert ok.effective_date.mention == "Oct 1"
     with pytest.raises(ReplayMismatch):
         ReplayClient(tmp_path).extract("sys", "msg B — injection variant")
+
+
+# ---- workflow Field: states the model never produces must survive a save/reload -------------------
+def test_ambiguous_identity_keeps_its_citation_and_round_trips():
+    f = Field.from_extracted(cited("worker", "Sam", (70, 73)))
+    f.unresolved, f.question, f.candidates = True, "Which Sam? Give an employee ID.", ["10422", "20871", "10201"]
+    back = Field.model_validate(f.model_dump(mode="json"))
+    assert back.mention == "Sam" and back.source_span == [70, 73] and back.unresolved and len(back.candidates) == 3
+
+
+def test_human_supplied_answer_has_no_fabricated_span_and_round_trips():
+    f = Field.from_extracted(ExtractedField(entity_type="cost_center", unresolved=True, question="What is the new cost center?"))
+    f.supply("4410", by="human:jordan.hrbp")
+    back = Field.model_validate(f.model_dump(mode="json"))
+    assert back.resolved_id == "4410" and back.supplied_by == "human:jordan.hrbp"
+    assert back.source_span is None and back.mention is None and not back.unresolved
+
+
+def test_workflow_field_still_refuses_nonsense():
+    with pytest.raises(ValidationError):
+        Field(entity_type="worker", unresolved=True)                                   # no question
+    with pytest.raises(ValidationError):
+        Field(entity_type="worker", unresolved=True, question="?", resolved_id="1")    # both
+    with pytest.raises(ValidationError):
+        Field(entity_type="worker", mention="Sam", source_span=[0, 0])                 # empty span

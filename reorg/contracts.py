@@ -163,12 +163,46 @@ class RedactedText(BaseModel):
     sha256: str
 
 
-class Field(ExtractedField):
-    """Workflow field = extracted field + resolver-owned values. The model never produces these."""
+class Field(BaseModel):
+    """Workflow field. Does NOT inherit the extraction-only "cited xor unresolved" rule, because a
+    workflow field has to represent states the model never produces:
+      - cited AND unresolved: the Resolver found more than one match ("Sam") — the original evidence
+        is kept, and a question + candidates are added
+      - supplied by a human: the answer to an unresolved field (cost center 4410). No source span is
+        fabricated for it; `supplied_by` records who answered.
+    Evidence (mention/source_span) is copied from the ExtractedField and never edited afterwards."""
     model_config = ConfigDict(extra="forbid")
 
-    resolved_id: Optional[str] = None
-    candidates: Optional[list[str]] = None       # set by the Resolver on ambiguity
+    entity_type: EntityType
+    mention: Optional[str] = None            # as extracted; None when the text never said it
+    source_span: Optional[list[int]] = None  # as extracted; never fabricated
+    unresolved: bool = False                 # needs a human answer (no text, or ambiguous identity)
+    question: Optional[str] = None
+    candidates: Optional[list[str]] = None   # set by the Resolver on ambiguity
+    resolved_id: Optional[str] = None        # set by the Resolver (exactly one match) or by a human
+    supplied_by: Optional[str] = None        # who answered, when a human did
+
+    @model_validator(mode="after")
+    def _consistent(self):
+        if self.source_span is not None:
+            s, e = (self.source_span + [None, None])[:2]
+            if len(self.source_span) != 2 or not (isinstance(s, int) and isinstance(e, int) and 0 <= s < e):
+                raise ValueError("source_span must be [start, end] with 0 <= start < end")
+        if self.unresolved and not (self.question and self.question.strip()):
+            raise ValueError("unresolved field requires a question")
+        if self.unresolved and self.resolved_id is not None:
+            raise ValueError("a field cannot be both unresolved and resolved")
+        return self
+
+    @classmethod
+    def from_extracted(cls, f: ExtractedField) -> "Field":
+        return cls(entity_type=f.entity_type, mention=f.mention, source_span=f.source_span,
+                   unresolved=f.unresolved, question=f.question)
+
+    def supply(self, value: str, by: str) -> None:
+        """A human answers an unresolved field. Evidence is left as it was; nothing is fabricated."""
+        self.resolved_id, self.supplied_by = value, by
+        self.unresolved, self.question, self.candidates = False, None, None
 
 
 class Change(BaseModel):
@@ -192,9 +226,9 @@ class ReorgIntent(BaseModel):
             id=f"intent_{uuid.uuid4().hex[:8]}",
             source_id=source_id,
             sent_at=sent_at,
-            effective_date=Field(**result.effective_date.model_dump()),
+            effective_date=Field.from_extracted(result.effective_date),
             changes=[Change(kind=c.kind, notes=c.notes,
-                            fields={n: Field(**f.model_dump()) for n, f in c.fields.items()})
+                            fields={n: Field.from_extracted(f) for n, f in c.fields.items()})
                      for c in result.changes],
             status="DRAFT",
         )

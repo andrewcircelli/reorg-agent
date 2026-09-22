@@ -116,9 +116,10 @@ def cmd_compile(a):
         print(f"  ⚠ {w}")
 
 
-def _apply_resolutions(intent: ReorgIntent, items: list[str]) -> ReorgIntent:
+def _apply_resolutions(intent: ReorgIntent, items: list[str], by: str = "human:jordan.hrbp") -> ReorgIntent:
     """Demo shortcut for Jordan's follow-up answers, scoped to one change and field:
-    --resolve 4.worker=10422   (1-based change index, field name, canonical id).
+    --resolve 1.target_cc=4410   (1-based change index, field name, canonical id).
+    The original evidence is kept as extracted; no span is invented for the supplied value.
     Production: a second SourceRecord with its own provenance."""
     for item in items:
         ref, value = item.split("=", 1)
@@ -126,11 +127,7 @@ def _apply_resolutions(intent: ReorgIntent, items: list[str]) -> ReorgIntent:
         ch = intent.changes[int(idx) - 1]
         if name not in ch.fields:
             raise SystemExit(f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}'")
-        f = ch.fields[name]
-        f.resolved_id, f.candidates = value, None
-        if f.unresolved:                       # missing-text case: now supplied by a person
-            f.unresolved, f.question, f.mention = False, None, value
-            f.source_span = f.source_span or [0, 0]
+        ch.fields[name].supply(value, by)
     return intent
 
 
