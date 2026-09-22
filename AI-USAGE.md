@@ -41,10 +41,10 @@ slower than it sounds and is most of what makes the prototype checkable.
 ## Where AI shaped a decision
 
 **The Resolver is a separate component from the Extractor.** My first design had the model resolve
-names against reference data in the same call. The argument that changed my mind was that "which
-Sam" has an exact answer in a directory, so a model choosing between three Sams is a guess dressed
-as a resolution. That split is now the spine of the design: the Extractor says what the text says,
-the Resolver says what it refers to, the Validator says whether that is consistent.
+names against reference data in the same call. The argument that changed my mind: which record a
+name refers to has an exact answer in a directory, so a model choosing between several matches is a
+guess dressed as a resolution. That split is now the spine of the design — the Extractor says what
+the text says, the Resolver says what it refers to, the Validator says whether that is consistent.
 
 **Where a mention starts and ends.** Two identical runs cited the same team two different ways —
 `"Data Platform team"` once and `"Priya's Data Platform team"` once. Both quoted the message exactly,
@@ -130,14 +130,33 @@ result until the month closes.
 the model-facing schema has no approval field and the gate is not callable by the model — and a
 detector I have not tested properly would be a claim rather than a protection.
 
-**I chose not to support more than two change types, because** two of them carry every property the
-design needs to demonstrate: an unresolvable value, an ambiguous identity, a step with no API, a
-dependency that must not be broken, redacted compensation, and two different approver roles. The rest
-are in the contract as a roadmap and are rejected loudly if a model emits one.
+**I chose to support one change type, because** a cost center split alone carries the properties
+that matter: a value the message never states, a step no system can perform, a dependency that must
+not be broken, and an approval bound to what was approved. The rest are in the contract as a roadmap
+and are rejected loudly if a model emits one.
+
+I had built two. Compensation changes came out late, and the reasoning is worth recording because it
+cut against my own instinct to keep what was already working. The second type cost about ten lines of
+code and carried three demonstrations: redaction, an ambiguous identity, and a second approver. But
+the constraint on this deliverable is not what the system can do — it is what I can explain in half
+an hour. Two types doubled what a reader has to hold for a marginal gain in what the demo shows.
+
+**Compensation stayed in the message as context rather than as a request.** It appears as *"staffing
+context… includes Sam's current salary of $215K"*. The redactor removes it before the model reads
+anything, and the model's own note on the live call confirms the boundary held: *"mentioned as
+background only; compensation changes are not supported in this version and were not extracted."*
+So the sensitive-data constraint is still demonstrated — and better than before, because the figure
+is now removed once and never restored. Approving a cost center split does not require knowing
+anyone's pay, so it does not come back in the review packet either.
+
+**What that cost, stated plainly:** the directory holds three people called Sam, and the old message
+named one of them. Watching the lookup decline to choose between them was the clearest moment in the
+demo. That behavior is unchanged and still tested — it is now described rather than shown.
 
 **I chose not to plan multiple changes of the same type in one request, because** doing it properly
 means one step instance per change plus an answer for what happens when the third of five fails. The
-validator and the compiler both refuse it rather than silently keeping the last one.
+validator and the compiler both refuse it rather than silently keeping the last one — a limit stated
+and enforced beats a limit discovered when half a request goes missing.
 
 **I chose not to compute deadlines from the registry's timing rules, because** that needs the real
 payroll and close calendar and its policy; the rules are carried into the plan as text instead.

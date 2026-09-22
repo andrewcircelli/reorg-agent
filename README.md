@@ -15,7 +15,7 @@ see [Limitations](#limitations-read-this-part) and `DESIGN.md` for why that line
 ```bash
 make setup     # creates .venv, installs pinned requirements (needs Python 3.10+)
 make demo      # the whole arc, no API key needed
-make test      # 109 tests
+make test      # 104 tests
 ```
 
 `make demo` needs no API key. It replays a **real** model response recorded earlier — a genuine
@@ -38,75 +38,78 @@ Everything below is generated. The run directory is the audit trail.
 
 ---
 
-## What the demo does, in seven steps
+## What the demo does
 
-**1. Read the message.** One model call, on text with the pay figure already replaced by `[COMP_1]`.
-Every value is either quoted from the message or raised as a question.
+The message it works from, in `fixtures/msg_jordan.txt`:
+
+> Heads up — effective Oct 1, we're splitting the Infra cost center so Priya's Data Platform team
+> gets its own. Staffing context for the split is attached; it includes Sam's current salary of
+> $215K. Let me know if I'm missing anything.
+
+**1. The salary is removed before anything reads the message.** `$215K` becomes `[COMP_1]` in a
+deterministic pass, and the real value stays in a local file nothing downstream opens. Asking a
+model not to repeat a salary is a request; taking it out first does not depend on the model
+complying.
+
+**2. One model call.** Every value is either quoted from the message or raised as a question.
 
 ```
-ReorgIntent intent_8627f6c2  (replay)
+ReorgIntent intent_414fa694  (replay)
   effective_date: Oct 1
    [1] COST_CENTER_SPLIT
         source_cc      Infra cost center     ← "Infra cost center"
         target_cc      UNRESOLVED   ? What is the name or number of the new cost center…
         team           Data Platform team    ← "Data Platform team"
-   [2] COMP_CHANGE
-        worker         Sam                   ← "Sam"
-        new_band       L5                    ← "L5"
-        new_comp       [COMP_1]              ← "[COMP_1]"
 ```
 
-The model never sees the salary, and it is told to extract *words*, not decide who they refer to.
+The salary is not extracted at all — it is background, not a request, and there is no supported
+change kind for it. The model said so itself, unprompted:
 
-**2. Look the words up, and refuse to guess.** "Sam" matches three people in the directory, so it
-becomes a question with the candidates listed rather than a choice. Exactly one match becomes an id;
-nothing else does.
+> *"Sam's current salary of [COMP_1] is mentioned as background only; compensation changes are not
+> supported in this version and were not extracted."*
 
-**3. Check the rules.** Eight of them, deterministic, no model.
+**3. Look the words up.** `Infra cost center` → the org code `INFRA` → cost center 4400.
+`Data Platform team` → `org_data_platform`. `Oct 1` → 2026-10-01, the year taken from when the
+message was sent rather than from today's clock. Exactly one match becomes an id; zero or several
+becomes a question with the candidates listed.
+
+**4. Check the rules, then refuse.** Seven deterministic rules, no model.
 
 ```
-BLOCKING  R_UNRESOLVED   target_cc is unanswered — What is the name or number of the new cost center…
-BLOCKING  R_UNRESOLVED   worker is unanswered — More than one worker matches 'Sam'. Which one is meant?
-INFO      R_REQUIRED_ROLES  approval required from comp_hr (for COMP_CHANGE)
+BLOCKING  R_UNRESOLVED      target_cc is unanswered — What is the name or number of the new cost center…
 INFO      R_REQUIRED_ROLES  approval required from finance (for COST_CENTER_SPLIT)
 
   status: NEEDS_RESOLUTION
+
+REFUSED: 1 blocking finding(s) outstanding — nothing to approve yet.
 ```
 
-**4. The gate refuses.**
-
-```
-REFUSED: 2 blocking finding(s) outstanding — nothing to approve yet.
-```
-
-**5. A person answers, and both owners approve.** The two questions are answered
-(`--resolve 2.worker=10422 --resolve 1.target_cc=4410`). Splitting a cost center is Finance's
-decision; changing someone's band is Comp/HR's. One message asks for both, so one approval is not
-enough:
+**5. A person answers, and the owner approves.** `--resolve 1.target_cc=4410`, then:
 
 ```
 recorded: finance approved by dana.finance
-  bound to content 0a107c18e2fc…, reference 089aa490e714…, registry a42553e6f12c…
-  NOT YET APPROVED — still required: comp_hr
-
-recorded: comp_hr approved by raj.comp
+  bound to content ef0c76189711…, reference 089aa490e714…, registry f1be8f223397…
   APPROVED — every required role has signed the same content.
   Any edit changes that content hash, and these approvals stop applying.
 ```
 
 An approval names three things: the content, the reference data it was checked against, and the step
 registry. Change any of them and it stops applying — it stays in the file as history, and the
-request needs approving again.
+request needs approving again. Roles are derived per change kind, so a request containing two kinds
+would need both owners and either one alone would not be enough.
+
+Open `runs/demo/06_packet.md` here. **The salary does not appear in it.** It was removed before the
+model, and approving a cost center split does not require knowing anyone's pay, so it is never put
+back.
 
 **6. Compile the plan.** The order comes from `registry/steps.yaml`, not from anyone's memory.
 
 ```
-PLAN for intent_8627f6c2 — 5 steps, in order, registry a42553e6f12c…
+PLAN for intent_414fa694 — 4 steps, in order, registry f1be8f223397…
   1. finance.create_cost_center           api
   2. finance.map_gl                       BY HAND   after finance.create_cost_center
   3. finance.update_reporting_hierarchy   api       after finance.map_gl
   4. hris.reassign_workers                api       after finance.create_cost_center, finance.map_gl
-  5. hris.update_comp                     api
 
   Nothing has been executed. This is a plan for people and systems to carry out.
   1 step(s) need a person — see runs/demo/09_tasks.md
@@ -141,7 +144,7 @@ next one reads.
 | 2 | `reorg/redact.py` | **stage** | replace pay figures before the model sees anything |
 | 3 | `reorg/extract.py` | **stage** | the one model call. The header walks each paragraph of the prompt as a decision |
 | 4 | `reorg/resolve.py` | **stage** | words → ids, and a question whenever that is not certain |
-| 5 | `reorg/validate.py` | **stage** | eight rules; is this safe to put in front of a person? |
+| 5 | `reorg/validate.py` | **stage** | seven rules; is this safe to put in front of a person? |
 | 6 | `reorg/gate.py` | **stage** | the three refusals, and what an approval is attached to |
 | 7 | `reorg/compile.py` | **stage** | select steps, order them, emit the task card |
 | — | `reorg/model_client.py` | supporting | the seam: real call, or replay of a recorded one |
@@ -157,11 +160,16 @@ If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.
   task card. Writing to the real systems depends on how each treats an effective date, a repeated
   write, and a read-back afterwards — a simulated adapter would demonstrate my assumptions rather
   than their systems.
-- **Two kinds of change**: `COST_CENTER_SPLIT` and `COMP_CHANGE`. The others are named in the
-  contract as a roadmap and rejected loudly if a model emits one.
-- **One change of each kind per request.** Steps are chosen per kind, so two pay changes would
-  produce one pay step carrying only the second person. Rather than mishandle it, both the validator
-  and the compiler refuse it.
+- **One kind of change**: `COST_CENTER_SPLIT`. The others are named in the contract as a roadmap and
+  rejected loudly if a model emits one. Compensation appears in the fixture message as sensitive
+  *context* rather than as a request — enough to demonstrate the handling without a second change
+  kind to explain.
+- **One change of that kind per request.** Steps are chosen per kind, so two splits in one message
+  would produce one set of steps carrying only the second. Rather than mishandle it, both the
+  validator and the compiler refuse it.
+- **The Resolver's refusal is tested, not demonstrated.** Nothing in the fixture message is
+  ambiguous, so you see it resolving rather than declining. That it asks instead of guessing when a
+  mention matches several records — or none — is covered in `tests/test_resolve.py`.
 - **Identities are simulated.** The approver is whatever name is typed after `--as`. There is no
   login and no identity provider; what is demonstrated is where the boundary sits and what it binds
   to, not authentication.
@@ -184,8 +192,8 @@ Resolver, Validator, Approval Gate, Step Registry, Plan Compiler. One file per c
 
 ## How I used AI
 
-See `AI-USAGE.md` — what it drafted, what I overrode, and the two bugs its own output caused that
-the contracts caught before they mattered.
+See `AI-USAGE.md` — what it drafted, what I overrode, and the eight things review caught in
+AI-written code before they could matter.
 
 ## Time spent
 

@@ -79,10 +79,15 @@ queue — and the file written between each stage is the seam those attach to.
 
 ### Limits of this version, stated plainly
 
-Two change kinds (`COST_CENTER_SPLIT`, `COMP_CHANGE`); one change of each kind per request, refused
-rather than mishandled if more arrive; simulated approver identity; fixture reference data standing
-in for reads from the systems of record; and one fixture message, which is one test case rather than
-an accuracy claim.
+One change kind, `COST_CENTER_SPLIT`, and one change of it per request — refused rather than
+mishandled if more arrive. Compensation appears in the fixture message as sensitive *context*
+rather than as a request, which demonstrates the handling without a second change kind to carry.
+Simulated approver identity. Fixture reference data standing in for reads from the systems of
+record. And one fixture message, which is one test case rather than an accuracy claim.
+
+*Also worth stating: nothing in that message is ambiguous, so the Resolver is seen resolving rather
+than declining. That it asks instead of guessing when a mention matches several records is real and
+tested, but it is described here rather than shown on screen.*
 
 The message's **sender, channel and date are stubbed too**, since the fixture is a text file and the
 channel connectors are not built — in production they come from the event itself. Worth naming
@@ -117,8 +122,8 @@ reviewed — nobody looks until close.
 > wherever the answer is exact and nobody checks.**
 
 By that rule the Extractor is a model call and the Resolver, Validator, Gate and Compiler are not.
-"Which Sam" has an exact answer in a directory, and a model choosing between three Sams is a guess in
-the costume of a resolution.
+"Which team" has an exact answer in a directory, and a model choosing between several matches is a
+guess in the costume of a resolution.
 
 **What "agentic" means here.** The question is which building blocks the design relies on, not how
 many agents it contains. Six, of which the prototype exercises five:
@@ -165,7 +170,7 @@ not tamper-proof; hashes do not make a folder append-only.
 | 2 | **Redactor** | code | Pay figures → tokens, before the model sees anything. Asking the model not to repeat a salary is a request; removing it first does not depend on the model complying. Scope stated plainly: pay formats, not personal data in general — names and team relationships stay, because the Extractor needs them. |
 | 3 | **Extractor** ★ | model | Redacted text → `ExtractionResult`. Every field is cited or explicitly unresolved, never both and never neither. Every citation must **quote**: the span lies inside the message and the words there equal the mention, character for character. Extracts *mentions*, not identities. |
 | 4 | **Resolver** | code | Mentions → canonical ids. One match resolves; zero or more than one becomes a question. Reference data carries only what an export carries — ids, names, codes, structure — and is never extended to make a match succeed. |
-| 5 | **Validator** | code | Eight rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Warning: a band change that moves nothing. Info: the band move, and which roles must approve. |
+| 5 | **Validator** | code | Seven rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Info: which roles must approve. |
 | 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text and puts the pay figure back only there. |
 | 7 | **Step Registry** | data | `steps.yaml`: id, system, which changes it applies to, what it requires, whether a person or an API does it, its timing rule, and how it is verified. **This is the source of truth the problem statement says does not exist.** Adding a system is an edit a controller reviews. |
 | 8 | **Plan Compiler** | code | Picks the steps this request needs and puts them in an order where nothing runs before what it depends on. Refuses a loop, or a prerequisite the request does not include. Steps run one after another. Same request, same plan, every time. |
@@ -185,10 +190,10 @@ arriving in a freeform channel. It can become a proposal and nothing else.
 **What our code owns** — the request, its fields, the findings, the approvals, the plan and its
 steps — is built *from* an extraction and never parsed out of a model response. Its version of a
 field is deliberately looser, because a system with people in it has states a model never produces:
-an ambiguous "Sam" keeps its quote *and* gains a question, and a value a person supplied has no
-quote at all and records who supplied it. That is what lets the packet say *"Sam → 10422 (answered
-by the HR partner) [message said "Sam"]"* rather than implying a person invented something the
-message stated.
+a mention whose lookup was ambiguous keeps its quote *and* gains a question, and a value a person
+supplied outright has no quote at all and records who supplied it. That is what lets the packet say
+*"Data Platform team → org_data_platform (answered by the HR partner) [message said "Data Platform
+team"]"* rather than implying a person invented something the message stated.
 
 ### Where the human stays in the loop, and why there
 
@@ -202,12 +207,18 @@ ordered wrong plan.
 Here, because the resolved request is the **smallest artifact that fully determines everything
 downstream** — small enough to check field by field against the evidence, and nothing has moved yet.
 The approver sees each value beside the words it came from, which values a person supplied rather
-than the message, what the checks found, and which roles must approve. The pay figure is put back
-here and only here, because this is the only place someone is asked to approve it.
+than the message, what the checks found, and which roles must approve.
+
+**A redacted figure is not put back.** The salary in the fixture message is removed before the model
+reads it, and approving a cost center split does not require knowing anyone's pay — so it is taken
+out once and never restored, the packet included. If a change kind ever arrives whose approval turns
+on a figure, putting it back becomes a question worth answering: for a named role, in this one
+place, and nowhere else.
 
 **Who approves** is derived from what the request contains. Splitting a cost center moves budget:
-Finance. Changing a band changes pay: Comp/HR. A single message asking for both needs both, and
-Finance approving the whole message would be approving something Finance does not own. Cross-entity
+Finance. The rule is **per change kind, not per request** — this version supports one kind and so
+derives one role, but a message asking for two different kinds would need both owners, and either
+approving alone would be approving something they do not own. Cross-entity
 moves would add Legal (designed). The requester cannot approve their own request.
 
 **What an approval binds to** — the content, the reference data it was checked against, and the
@@ -354,7 +365,7 @@ propagation error. Model unavailability degrades to the status quo: a person rea
 | A2 | There is an authoritative system per entity: HR for people and orgs, finance for cost centers and GL. The Resolver needs a tiebreaker when the copies disagree. |
 | A3 | The Resolver can read reference data — live where an API exists, from a periodic export where it does not. The "no API" constraint applies to reads as well as writes. |
 | A4 | Requests come from an identifiable set of HR partners, so requester ≠ approver is enforceable. |
-| A5 | Approver roles: Finance for cost-center changes, Comp/HR for compensation, Legal for cross-entity. The requesting leader is never an approver. |
+| A5 | Approver roles: Finance for cost-center changes, Comp/HR for compensation, Legal for cross-entity. The requesting leader is never an approver. Only the first is exercised, since that is the one change kind built — but the design derives the role from the kind, so the others are a table entry each. |
 | A6 | A payroll-posting and period-close calendar exists and is machine-readable. Not relied on here: timing rules are carried through as policy text and no date is computed from them. |
 | A7 | API-backed systems support idempotent writes. |
 | A8 | Volume is dozens to low hundreds of reorgs a year, so cost and latency are not design constraints. One extraction measured at roughly 3,000 input and 2,000 output tokens — a few cents. |

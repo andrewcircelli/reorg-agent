@@ -107,12 +107,15 @@ def approve(intent: ReorgIntent, findings: list[Finding], src: SourceRecord,
 # shown beside the words it came from, so it can be checked against the message rather than taken
 # on trust.
 #
-# The hidden pay figure is NOT put back. The Redactor takes it out before the model sees the
-# message, and approving a cost center split does not require knowing anyone's salary — so it is
-# removed once and never restored. The packet shows the token, which tells the approver a figure was
-# present and was withheld, rather than pretending the message never contained one.
+# A hidden pay figure is NOT put back. The Redactor takes it out before the model sees the message,
+# and approving a cost center split does not require knowing anyone's salary, so it is removed once
+# and never restored.
 #
-# If a change kind arrives whose approval genuinely turns on a figure, that is when rehydration
+# In practice it does not reach this packet at all: every value here quotes the redacted text, and
+# no value of a cost center split quotes a salary. If one ever did, it would appear as the token —
+# which says a figure was there and was withheld, rather than pretending the message never had one.
+#
+# If a change kind arrives whose approval genuinely turns on a figure, that is when putting it back
 # becomes a question worth answering — for a named role, in this one place, and nowhere else.
 # ---------------------------------------------------------------------------------------------
 
