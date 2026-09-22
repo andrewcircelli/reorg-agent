@@ -35,3 +35,8 @@ probe0:
 
 check1:
 	PYTHONPATH=. $(PY) probes/phase1_check.py
+
+# Phase 2: run the extractor on the fixture (replay by default; LIVE=1 makes the real call and records it), then diff.
+phase2:
+	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/phase2 $(if $(LIVE),--live --record,)
+	PYTHONPATH=. $(PY) probes/phase2_diff.py runs/phase2
