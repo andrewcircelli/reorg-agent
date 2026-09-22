@@ -116,9 +116,15 @@ def cmd_validate(a):
     red_text = _r(run, "02_redacted.json")["text"]      # spans index the REDACTED text
     findings = validate.validate(intent, ref)
     intent.status = gate.status_for(findings)
-    _w(run, "04_resolved.json", intent)
-    _w(run, "05_findings.json", {"findings": [f.model_dump(mode="json") for f in findings]})
     registry_version, reference_sha256 = _context()
+    _w(run, "04_resolved.json", intent)
+    # The findings are stamped with the reference data and registry they were computed against.
+    # Without that, `approve` could read a clean set of findings produced against data that has
+    # since changed, and stamp the approval with the CURRENT hashes — an approval that looks
+    # correctly bound to a situation nobody ever checked.
+    _w(run, "05_findings.json", {"registry_version": registry_version,
+                                 "reference_sha256": reference_sha256,
+                                 "findings": [f.model_dump(mode="json") for f in findings]})
     packet = gate.render_packet(intent, findings, red_text, _approvals(run),
                                 registry_version, reference_sha256)
     _w(run, "06_packet.md", packet)
@@ -143,9 +149,23 @@ def cmd_approve(a):
     while they all approved the content it currently has."""
     run = Path(a.run)
     intent = ReorgIntent.model_validate(_r(run, "04_resolved.json"))
-    findings = [Finding.model_validate(f) for f in _r(run, "05_findings.json")["findings"]]
+    checked = _r(run, "05_findings.json")
+    findings = [Finding.model_validate(f) for f in checked["findings"]]
     src = SourceRecord.model_validate(_r(run, "01_source.json"))
     registry_version, reference_sha256 = _context()
+
+    # Approve against the situation the rules were actually run against, or not at all. The
+    # findings say what was checked and when; if the reference data or the registry has moved
+    # since, those findings describe a different world and approving on them would record a
+    # decision nobody made.
+    for label, was, now in (("reference data", checked.get("reference_sha256"), reference_sha256),
+                            ("step registry", checked.get("registry_version"), registry_version)):
+        if was != now:
+            print(f"\n  REFUSED: the {label} has changed since these findings were produced "
+                  f"({str(was)[:12]}… → {now[:12]}…). Re-run validate first — what was checked is "
+                  f"not what you would be approving.")
+            sys.exit(2)
+
     try:
         appr = gate.approve(intent, findings, src, approver=a.as_, role=a.role or a.as_,
                             registry_version=registry_version,

@@ -4,8 +4,16 @@ What this does and does not do, stated plainly. It replaces pay figures in the f
 below. It is not general-purpose personal-data removal. Names and team relationships stay in the
 text on purpose, because the model needs them to work out what the message is asking for.
 
-The list of what was replaced never leaves this machine. The real figures are put back only when
-the review packet is shown to someone whose role is allowed to see them.
+WHERE THE FIGURE STILL EXISTS, STATED EXACTLY
+
+It is removed from everything downstream — the model call, the extraction, the resolved request, the
+review packet and the plan. It is not removed from the machine. Two local artifacts still hold it:
+`01_source.json`, because Intake stores the message exactly as it arrived and provenance depends on
+that, and `02_redaction_map.local.json`, the token map.
+
+Nothing reads the map. It exists so a figure could be put back if a change kind ever arrived whose
+approval turned on one — for a named role, in one place. No such kind is built, so the figure is
+removed once and never restored.
 """
 from __future__ import annotations
 

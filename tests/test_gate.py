@@ -194,3 +194,42 @@ def test_the_packet_says_which_kind_of_change_retired_an_approval():
     approvals = [sign(one, "finance")]
     packet = gate.render_packet(one, [], TEXT, approvals, REGISTRY, "different-reference")
     assert "given against different reference data — no longer applies" in packet
+
+
+# ---- what was checked has to be what you are approving ---------------------------------------------
+def test_approve_refuses_findings_produced_against_different_reference_data(tmp_path, monkeypatch):
+    """The hole this closes: `approve` read a clean set of findings, then stamped the approval with
+    the CURRENT reference hash. Change the reference data between validating and approving and you
+    got an approval that looked correctly bound to a situation nobody had checked — and a plan
+    compiled from it."""
+    import json, subprocess, sys, shutil, os
+    from pathlib import Path
+
+    project = Path.cwd()
+    work = tmp_path / "proj"
+    shutil.copytree(project, work, ignore=shutil.ignore_patterns(
+        ".git", ".venv", "runs", "__pycache__", "*.pyc"))
+    py = str(project / ".venv/bin/python")
+
+    def run(*args):
+        return subprocess.run([py, "-m", "reorg.cli", *args], cwd=work,
+                              capture_output=True, text=True)
+
+    run("capture", "fixtures/msg_jordan.txt", "--run", "runs/t")
+    run("validate", "runs/t", "--resolve", "1.target_cc=4410")
+
+    orgs = work / "reference/orgs.json"
+    data = json.loads(orgs.read_text())
+    for o in data:
+        if o["id"] == "org_data_platform":
+            o["cost_center"] = "4600"          # the split is now against the wrong source
+    orgs.write_text(json.dumps(data))
+
+    out = run("approve", "runs/t", "--as", "dana.finance", "--role", "finance")
+    assert out.returncode == 2, out.stdout
+    assert "reference data has changed since these findings were produced" in out.stdout
+    assert "Re-run validate first" in out.stdout
+
+    # and re-validating surfaces the real problem rather than hiding it
+    out = run("validate", "runs/t", "--resolve", "1.target_cc=4410")
+    assert "R_TEAM_IN_SOURCE_CC" in out.stdout and "NEEDS_RESOLUTION" in out.stdout

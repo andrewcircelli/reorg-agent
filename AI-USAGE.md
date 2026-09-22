@@ -1,8 +1,12 @@
 # How I used AI, and where I overrode it
 
-The assignment expects AI use and asks where it shaped a decision and where I overrode it. The short
-version: **AI wrote nearly all of the code, and almost none of the decisions.** The review is what
-makes the code mine, and this document is the evidence for that claim rather than an assertion of it.
+The assignment expects AI use and asks where it shaped a decision and where I overrode it.
+
+The short version: **AI wrote nearly all of the code and proposed most of the alternatives; I chose
+between them, rejected several, and verified what came back.** Some of those proposals changed my
+design — they are listed below, with what changed. Others I turned down, and those are listed too.
+The review is what makes the code mine, and this document is the evidence for that rather than an
+assertion of it.
 
 ---
 

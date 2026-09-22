@@ -46,10 +46,14 @@ The message it works from, in `fixtures/msg_jordan.txt`:
 > gets its own. Staffing context for the split is attached; it includes Sam's current salary of
 > $215K. Let me know if I'm missing anything.
 
-**1. The salary is removed before anything reads the message.** `$215K` becomes `[COMP_1]` in a
-deterministic pass, and the real value stays in a local file nothing downstream opens. Asking a
-model not to repeat a salary is a request; taking it out first does not depend on the model
-complying.
+**1. The salary is removed from everything downstream.** `$215K` becomes `[COMP_1]` in a
+deterministic pass before the model call, and it stays out — of the extraction, the resolved
+request, the review packet and the plan. Asking a model not to repeat a salary is a request; taking
+it out first does not depend on the model complying.
+
+Precisely: it is *not* removed from the machine. Two local files still hold it — `01_source.json`,
+because Intake stores the message exactly as it arrived and provenance depends on that, and
+`02_redaction_map.local.json`, the token map. Nothing reads the map, and no value is ever put back.
 
 **2. One model call.** Every value is either quoted from the message or raised as a question.
 
@@ -63,7 +67,9 @@ ReorgIntent intent_414fa694  (replay)
 ```
 
 The salary is not extracted at all — it is background, not a request, and there is no supported
-change kind for it. The model said so itself, unprompted:
+change kind for it. The instructions tell the model to treat mentions of people, pay or headcount as
+background rather than forcing them into the one supported kind, and the recorded response followed
+that instruction and said so:
 
 > *"Sam's current salary of [COMP_1] is mentioned as background only; compensation changes are not
 > supported in this version and were not extracted."*
@@ -95,8 +101,11 @@ recorded: finance approved by dana.finance
 
 An approval names three things: the content, the reference data it was checked against, and the step
 registry. Change any of them and it stops applying — it stays in the file as history, and the
-request needs approving again. Roles are derived per change kind, so a request containing two kinds
-would need both owners and either one alone would not be enough.
+request needs approving again. Approving also requires that the findings were produced against the
+*current* reference data, so nobody signs off on checks that have gone stale.
+
+Finance is the only approval role this version has, because it supports one change kind. How that
+generalises is in `DESIGN.md`.
 
 Open `runs/demo/06_packet.md` here. **The salary does not appear in it.** It was removed before the
 model, and approving a cost center split does not require knowing anyone's pay, so it is never put
@@ -134,8 +143,17 @@ the trap stays written down.
 
 ## Reading route
 
-Follow one message through, in this order. Each file is one stage, and each writes the artifact the
-next one reads.
+Four commands run the seven stages. `cli.py` coordinates them and saves each stage's output; the
+stage modules themselves write nothing.
+
+| Command | Stages it runs |
+|---|---|
+| `capture` | Intake → Redactor → Extractor |
+| `validate` | the human's answers, if supplied → Resolver → Validator → packet |
+| `approve` | Approval Gate → updated packet |
+| `compile` | registry selection → dependency ordering → plan and task card |
+
+Then follow one message through the stage modules, in this order:
 
 | # | File | | What it decides |
 |---|---|---|---|
@@ -148,6 +166,7 @@ next one reads.
 | 6 | `reorg/gate.py` | **stage** | the three refusals, and what an approval is attached to |
 | 7 | `reorg/compile.py` | **stage** | select steps, order them, emit the task card |
 | — | `reorg/model_client.py` | supporting | the seam: real call, or replay of a recorded one |
+| — | `reorg/cli.py` | supporting | the four commands; reads and writes the numbered files |
 | — | `registry/steps.yaml` | data | the checklist that used to live in someone's head |
 
 If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.

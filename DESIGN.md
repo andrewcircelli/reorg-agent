@@ -134,7 +134,7 @@ many agents it contains. Six, of which the prototype exercises five:
 | A boundary the model cannot cross | the gate is not callable by the model, and the model's shape has no approval field | ✔ |
 | Every value carries its evidence | the words it came from, so reviewers check rather than trust | ✔ |
 | Ordinary code around the model | Resolver, Validator, Compiler | ✔ |
-| Steps that are safe to run twice, and get checked | every step has a stable key and a check to run afterwards | partly — both exist; running the check needs the real systems |
+| Planning metadata for safe retries and verification | every step carries a stable key and the check that ought to run after it | **metadata only.** Neither is exercised: nothing runs a step, so nothing retries one or verifies it. A stable key is a precondition for safe retry, not evidence of it — whether a system honours it is a property of that system |
 | "I don't know" goes to a person | designed: the Exception Agent's only permitted answer to a result it cannot classify | designed |
 
 What is deliberately absent is **a model deciding what happens next**. The second model placement in
@@ -171,7 +171,7 @@ not tamper-proof; hashes do not make a folder append-only.
 | 3 | **Extractor** ★ | model | Redacted text → `ExtractionResult`. Every field is cited or explicitly unresolved, never both and never neither. Every citation must **quote**: the span lies inside the message and the words there equal the mention, character for character. Extracts *mentions*, not identities. |
 | 4 | **Resolver** | code | Mentions → canonical ids. One match resolves; zero or more than one becomes a question. Reference data carries only what an export carries — ids, names, codes, structure — and is never extended to make a match succeed. |
 | 5 | **Validator** | code | Seven rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Info: which roles must approve. |
-| 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text and puts the pay figure back only there. |
+| 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text. A redacted figure is **not** put back: approving a cost center split does not require one. |
 | 7 | **Step Registry** | data | `steps.yaml`: id, system, which changes it applies to, what it requires, whether a person or an API does it, its timing rule, and how it is verified. **This is the source of truth the problem statement says does not exist.** Adding a system is an edit a controller reviews. |
 | 8 | **Plan Compiler** | code | Picks the steps this request needs and puts them in an order where nothing runs before what it depends on. Refuses a loop, or a prerequisite the request does not include. Steps run one after another. Same request, same plan, every time. |
 | 8b | **Task cards** | code | For steps no system can do: who, with which approved values, what must be true afterwards, and how that would be confirmed — written down as a requirement, not performed here. |
@@ -309,14 +309,19 @@ gate instead.
 
 ### R2 — Partial propagation
 
-**How it breaks.** Step three of five succeeds and step four fails — an API is down, or the
+**How it breaks.** One step in the plan succeeds and the next fails — an API is down, or the
 human-keyed step is overdue. The systems now disagree.
 
-**Blast radius.** The order shapes what is left behind; it does not make anything all-or-nothing. A
-failure mid-plan still leaves a half-applied reorg — but the order makes that state harmless and
-visible. A cost center that exists, with GL mapped, and no workers in it yet posts nothing wrong. The
-reverse — workers moved, no GL mapping — is the error the problem statement describes, and ordering
-*prevents* it rather than catching it afterwards. Worst realistic case: a stalled reorg, visible.
+**Blast radius.** The order shapes what is left behind; it does not make anything all-or-nothing,
+and it does not make every partial failure harmless. It removes one specific bad state: workers
+moved into a cost center with no GL mapping, which is the error the problem statement describes.
+Ordering *prevents* that rather than catching it afterwards.
+
+Other partial failures remain, and one is worth naming because ordering does nothing for it: worker
+reassignment is a single step over many people, so it can fail halfway and leave some moved and some
+not — with every preceding step already done. The plan does not model that, and an executor would
+have to. Best realistic case is a stalled reorg, visible. Worst is a partly-applied one that looks
+finished.
 
 **Detect and handle.** Per-step status and verification recorded in the run record; overdue human
 tasks alert their role; reconciliation on a schedule. **All three are designed, not built.** Stable
