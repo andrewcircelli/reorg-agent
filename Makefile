@@ -2,7 +2,7 @@ PY := .venv/bin/python
 PYTHON ?= python3
 RUN := runs/demo
 
-.PHONY: help setup demo test clean redacted contracts check-key extract guard
+.PHONY: help setup demo test clean redacted contracts extract guard
 .DEFAULT_GOAL := help
 
 # The listing below is built from the `###` and `## ` comments in this file, so it cannot drift
@@ -45,9 +45,6 @@ contracts: guard  ## Show the rules refusing bad model output. Run this if asked
 
 test: guard  ## Run the test suite
 	$(PY) -m pytest -q
-
-check-key: guard  ## Re-check the answer key after editing it. Fills in each quote's location
-	PYTHONPATH=. $(PY) probes/check_key.py
 
 redacted: guard  ## Print the message as the model sees it, with character positions
 	$(PY) -c "from reorg import intake, redact; r,_=redact.redact(intake.capture(\"fixtures/msg_jordan.txt\")); t=r.text; print(t); print(); [print(f\"{i:4} {t[i:i+40]!r}\") for i in range(0,len(t),40)]"
