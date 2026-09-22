@@ -6,12 +6,17 @@ import pytest
 from pydantic import ValidationError
 
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult, Field,
-                             ReorgIntent, missing_required, sha256_of, validate_spans)
+                             NamedExtractedField, ReorgIntent, missing_required, sha256_of,
+                             validate_citations)
 from reorg.model_client import ReplayClient, ReplayMismatch, recording_key, record
 
 
 def cited(t="worker", m="Sam", span=(0, 3), **kw):
     return ExtractedField(entity_type=t, mention=m, source_span=list(span), **kw)
+
+
+def named(name, t="worker", m="Sam", span=(0, 3), **kw):
+    return NamedExtractedField(name=name, entity_type=t, mention=m, source_span=list(span), **kw)
 
 
 def _property_names(schema, acc=None):
@@ -31,7 +36,7 @@ def test_model_schema_has_no_workflow_state():
     for forbidden in ("status", "resolved_id", "candidates", "source_id", "id"):
         assert forbidden not in names, f"model-facing schema must not carry '{forbidden}'"
     assert names == {"changes", "effective_date", "entity_type", "fields", "kind", "mention",
-                     "notes", "question", "source_span", "unresolved"}
+                     "name", "notes", "question", "source_span", "unresolved"}
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -54,29 +59,75 @@ def test_unresolved_and_cited_shapes_are_valid():
 
 def test_unknown_field_name_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"boss": cited()})
+        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("boss")])
 
 
 def test_wrong_entity_type_for_field_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": cited(t="org")})
+        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker", t="org")])
 
 
 def test_unsupported_kind_is_rejected_loudly():
     with pytest.raises(ValidationError, match="not supported in this version"):
-        ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields={})
+        ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields=[])
 
 
 def test_missing_required_is_detected_not_silent():
-    ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": cited()})
+    ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker")])
     assert missing_required(ch) == ["new_band"]
+
+
+def test_duplicate_field_name_rejected():
+    """A list shape makes duplicates expressible, so they are refused rather than last-one-wins."""
+    with pytest.raises(ValidationError, match="given twice"):
+        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker"), named("worker", m="Sammy")])
+
+
+# ---- citations must quote the text, not merely fit inside it ---------------------------------
+TEXT = "effective Oct 1, we're bumping Sam to the L5 band"
+
+
+def test_citation_that_quotes_the_text_is_accepted():
+    r = ExtractionResult(effective_date=cited("date", "Oct 1", (10, 15)), changes=[])
+    validate_citations(r, TEXT)
 
 
 def test_span_beyond_text_fails_closed():
     r = ExtractionResult(effective_date=cited("date", "Oct 1", (0, 5)), changes=[])
-    validate_spans(r, "Oct 1 move")
-    with pytest.raises(ValueError):
-        validate_spans(r, "Oct")
+    with pytest.raises(ValueError, match="exceeds text length"):
+        validate_citations(r, "Oct")
+
+
+def test_span_that_fits_but_quotes_other_words_fails_closed():
+    """The failure a bounds check misses: real span, wrong words. The value would look cited while
+    its evidence pointed somewhere else, and the reviewer would be verifying nothing."""
+    r = ExtractionResult(effective_date=cited("date", "Oct 1", (0, 5)), changes=[])   # "effec"
+    with pytest.raises(ValueError) as exc:
+        validate_citations(r, TEXT)
+    assert "'effec'" in str(exc.value) and "'Oct 1'" in str(exc.value)
+
+
+def test_every_bad_citation_is_reported_in_one_error():
+    r = ExtractionResult(
+        effective_date=cited("date", "Oct 1", (0, 5)),                       # quotes "effec"
+        changes=[ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[
+            named("worker", m="Sam", span=(31, 34)),                         # correct
+            named("new_band", t="band", m="L5", span=(0, 2)),                # quotes "ef"
+        ])])
+    with pytest.raises(ValueError) as exc:
+        validate_citations(r, TEXT)
+    msg = str(exc.value)
+    assert "effective_date" in msg and "changes[0].new_band" in msg
+    assert "changes[0].worker" not in msg, "a correct citation must not be reported"
+
+
+def test_unresolved_fields_have_nothing_to_quote():
+    r = ExtractionResult(
+        effective_date=ExtractedField(entity_type="date", unresolved=True, question="Effective when?"),
+        changes=[ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[
+            NamedExtractedField(name="target_cc", entity_type="cost_center", unresolved=True,
+                                question="Which new cost center?")])])
+    validate_citations(r, TEXT)
 
 
 def test_intent_is_minted_by_app_code_with_draft_status():

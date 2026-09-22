@@ -1,6 +1,7 @@
 """Compare a model ExtractionResult against the hand-written answer key, field by field.
 
-What counts as a match: same change kinds in the same order; same field names; same cited/unresolved
+What counts as a match: same change kinds in the same order; same field names (order within a
+change does not matter); same cited/unresolved
 status; same mention and span for cited fields. Question wording is not compared (presence is).
 """
 from __future__ import annotations
@@ -30,8 +31,9 @@ def diff(expected: ExtractionResult, actual: ExtractionResult) -> list[str]:
     if exp_kinds != got_kinds:
         problems.append(f"changes: expected kinds {exp_kinds}, got {got_kinds}")
     for i, (e, g) in enumerate(zip(expected.changes, actual.changes), 1):
-        for name, ef in e.fields.items():
-            problems += _field(f"[{i}].{name}", ef, g.fields.get(name))
-        for name in g.fields.keys() - e.fields.keys():
-            problems.append(f"[{i}].{name}: unexpected extra field (cited {g.fields[name].mention!r})")
+        exp_fields, got_fields = e.by_name(), g.by_name()
+        for name, ef in exp_fields.items():
+            problems += _field(f"[{i}].{name}", ef, got_fields.get(name))
+        for name in got_fields.keys() - exp_fields.keys():
+            problems.append(f"[{i}].{name}: unexpected extra field (cited {got_fields[name].mention!r})")
     return problems

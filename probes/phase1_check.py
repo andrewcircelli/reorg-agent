@@ -4,14 +4,15 @@ Reads fixtures/intent_expected.json, RECOMPUTES every source_span from its menti
 occurrence in the redacted text unless "occurrence": N is given), writes the completed file back,
 then validates it and prints each span's actual words so you can eyeball every field.
 
-You write: kind, field names, mention (the exact words), or unresolved + question.
+You write: kind, then one entry per field with its `name` and either mention (the exact words) or
+unresolved + question.
 It writes:  source_span. Keys starting with "_" are notes and are ignored.
 """
 import json
 import sys
 
 from reorg import intake, redact
-from reorg.contracts import ExtractionResult, missing_required, validate_spans
+from reorg.contracts import ExtractionResult, missing_required, validate_citations
 
 PATH = "fixtures/intent_expected.json"
 red, _ = redact.redact(intake.capture("fixtures/msg_jordan.txt"))
@@ -48,8 +49,8 @@ notes = []
 if raw.get("effective_date"):
     notes.append(fill_span("effective_date", raw["effective_date"]))
 for i, ch in enumerate(raw.get("changes", []), 1):
-    for name, f in ch.get("fields", {}).items():
-        notes.append(fill_span(f"[{i}].{name}", f))
+    for f in ch.get("fields", []):
+        notes.append(fill_span(f"[{i}].{f.get('name', '?')}", f))
 json.dump(raw, open(PATH, "w"), indent=2)      # write spans back so the fixture is complete on disk
 for n in notes:
     if n:
@@ -61,10 +62,10 @@ except Exception as e:
     print("\nSHAPE INVALID:\n", e); sys.exit(1)
 print("\nshape: valid")
 try:
-    validate_spans(r, text)
+    validate_citations(r, text)
 except ValueError as e:
-    print("SPAN OUT OF RANGE:", e); sys.exit(1)
-print("spans: inside the redacted text\n")
+    print("CITATION DOES NOT QUOTE THE TEXT:", e); sys.exit(1)
+print("citations: every span quotes its mention exactly\n")
 
 
 def show(label, f):
@@ -78,8 +79,8 @@ def show(label, f):
 show("effective_date", r.effective_date)
 for n, c in enumerate(r.changes, 1):
     print(f"\n[{n}] {c.kind.value}")
-    for name, f in c.fields.items():
-        show(name, f)
+    for f in c.fields:
+        show(f.name, f)
     miss = missing_required(c)
     if miss:
         print(f"  !! missing required: {miss}")

@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from reorg import intake, redact
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult,
-                             ReorgIntent, missing_required)
+                             NamedExtractedField, ReorgIntent, missing_required)
 from reorg.model_client import ReplayClient, ReplayMismatch
 
 
@@ -47,12 +47,19 @@ expect_error("both cited and unresolved", lambda: ExtractedField(
 
 # ---------------------------------------------------------------------------------------------
 section("3. Field names are frozen per change kind; missing required names are reported, not hidden")
-sam = ExtractedField(entity_type="worker", mention="Sam", source_span=[0, 3])
-expect_error("COMP_CHANGE with field 'boss'", lambda: ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"boss": sam}))
+def named(name, **kw):
+    return NamedExtractedField(name=name, mention="Sam", source_span=[0, 3], **kw)
+
+
+sam = named("worker", entity_type="worker")
+expect_error("COMP_CHANGE with field 'boss'", lambda: ExtractedChange(
+    kind=ChangeKind.COMP_CHANGE, fields=[named("boss", entity_type="worker")]))
 expect_error("worker field with entity_type org", lambda: ExtractedChange(
-    kind=ChangeKind.COMP_CHANGE, fields={"worker": ExtractedField(entity_type="org", mention="Sam", source_span=[0, 3])}))
-expect_error("TEAM_MOVE (planned, not built)", lambda: ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields={}))
-ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": sam})
+    kind=ChangeKind.COMP_CHANGE, fields=[named("worker", entity_type="org")]))
+expect_error("the same field name twice", lambda: ExtractedChange(
+    kind=ChangeKind.COMP_CHANGE, fields=[sam, sam]))
+expect_error("TEAM_MOVE (planned, not built)", lambda: ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields=[]))
+ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[sam])
 print(f"  COMP_CHANGE with only 'worker'            accepted as a shape; missing_required → {missing_required(ch)}")
 
 # ---------------------------------------------------------------------------------------------

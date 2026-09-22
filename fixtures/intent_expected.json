@@ -1,6 +1,6 @@
 {
   "_what": "The ANSWER KEY. Written from Jordan's message BEFORE the model runs. Phase 2 diffs the model's output against this. Not shown in the demo; it is how we know the extractor is correct.",
-  "_how": "For each field: the exact words as `mention` (make check1 fills source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
+  "_how": "For each field: its `name`, then the exact words as `mention` (make check1 fills source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
   "_settled_semantics": {
     "target_cc": "The message says the team 'gets its own' cost center but never names or numbers it -> unresolved + question. Never invented.",
     "team": "The team that moves onto the new cost center. Who is on it comes from reference data (the Resolver/adapter), not from the message.",
@@ -19,8 +19,9 @@
   "changes": [
     {
       "kind": "COST_CENTER_SPLIT",
-      "fields": {
-        "source_cc": {
+      "fields": [
+        {
+          "name": "source_cc",
           "entity_type": "cost_center",
           "mention": "Infra cost center",
           "source_span": [
@@ -28,12 +29,14 @@
             65
           ]
         },
-        "target_cc": {
+        {
+          "name": "target_cc",
           "entity_type": "cost_center",
           "unresolved": true,
           "question": "What is the new cost center?"
         },
-        "team": {
+        {
+          "name": "team",
           "entity_type": "org",
           "mention": "Priya's Data Platform team",
           "source_span": [
@@ -41,12 +44,13 @@
             95
           ]
         }
-      }
+      ]
     },
     {
       "kind": "COMP_CHANGE",
-      "fields": {
-        "worker": {
+      "fields": [
+        {
+          "name": "worker",
           "entity_type": "worker",
           "mention": "Sam",
           "source_span": [
@@ -54,7 +58,8 @@
             133
           ]
         },
-        "new_band": {
+        {
+          "name": "new_band",
           "entity_type": "band",
           "mention": "L5",
           "source_span": [
@@ -62,7 +67,8 @@
             143
           ]
         },
-        "new_comp": {
+        {
+          "name": "new_comp",
           "entity_type": "text",
           "mention": "[COMP_1]",
           "source_span": [
@@ -70,7 +76,7 @@
             160
           ]
         }
-      }
+      ]
     }
   ]
 }

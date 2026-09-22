@@ -63,7 +63,8 @@ OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
 # =====================================================================================
 class ExtractedField(BaseModel):
     """Either CITED (mention + source_span into the redacted text) or UNRESOLVED (question).
-    Never both, never neither. Spans are checked against the exact text in validate_spans()."""
+    Never both, never neither. A cited span must quote its mention exactly; validate_citations()
+    checks that against the text the model was actually shown."""
     model_config = ConfigDict(extra="forbid")
 
     entity_type: EntityType
@@ -91,12 +92,27 @@ class ExtractedField(BaseModel):
         return self
 
 
+class NamedExtractedField(ExtractedField):
+    """A field inside a change, carrying its own name.
+
+    Why not a dict? Structured outputs cannot express an object with model-chosen keys: the SDK
+    strips `additionalProperties: <schema>` and sends `additionalProperties: false` with no
+    properties, which constrains the model to emit an EMPTY object (see
+    tests/test_extraction_schema.py). So the wire shape is a list, the name travels with the field,
+    and application code mints the name → field map."""
+    name: str
+
+
 class ExtractedChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: ChangeKind
-    fields: dict[str, ExtractedField]
+    fields: list[NamedExtractedField]
     notes: Optional[str] = None
+
+    def by_name(self) -> dict[str, NamedExtractedField]:
+        """name → field. Duplicate names are rejected below, so nothing is silently dropped here."""
+        return {f.name: f for f in self.fields}
 
     @model_validator(mode="after")
     def _known_names_and_types(self):
@@ -104,11 +120,15 @@ class ExtractedChange(BaseModel):
             raise ValueError(f"{self.kind.value} is not supported in this version "
                              f"(supported: {sorted(k.value for k in SUPPORTED_KINDS)})")
         allowed = {**REQUIRED_FIELDS[self.kind], **OPTIONAL_FIELDS[self.kind]}
-        for name, f in self.fields.items():
-            if name not in allowed:
-                raise ValueError(f"{self.kind.value}: unknown field '{name}' (allowed: {sorted(allowed)})")
-            if f.entity_type != allowed[name]:
-                raise ValueError(f"{self.kind.value}.{name}: entity_type must be {allowed[name]}, got {f.entity_type}")
+        seen: set[str] = set()
+        for f in self.fields:
+            if f.name in seen:
+                raise ValueError(f"{self.kind.value}: field '{f.name}' given twice")
+            seen.add(f.name)
+            if f.name not in allowed:
+                raise ValueError(f"{self.kind.value}: unknown field '{f.name}' (allowed: {sorted(allowed)})")
+            if f.entity_type != allowed[f.name]:
+                raise ValueError(f"{self.kind.value}.{f.name}: entity_type must be {allowed[f.name]}, got {f.entity_type}")
         return self
 
 
@@ -121,26 +141,41 @@ class ExtractionResult(BaseModel):
     notes: Optional[str] = None
 
 
-def validate_spans(result: ExtractionResult, text: str) -> None:
-    """Every cited span must lie inside the exact text the model was shown. Fail closed."""
+def validate_citations(result: ExtractionResult, text: str) -> None:
+    """Every citation must QUOTE the exact text the model was shown: the span lies inside the text,
+    and the words at that span are the mention, character for character.
+
+    A span that fits but points elsewhere is the failure this catches — the value would look cited
+    while its evidence pointed at unrelated words, and a reviewer comparing the two side by side
+    would be comparing the model's claim against itself. Every mismatch is reported at once, so one
+    run tells you everything rather than one problem at a time. Fail closed: the caller gets no
+    ExtractionResult at all."""
     n = len(text)
+    problems: list[str] = []
 
     def _check(where: str, f: ExtractedField) -> None:
         if f.unresolved:
             return
         s, e = f.source_span
         if e > n:
-            raise ValueError(f"{where}: span [{s},{e}) exceeds text length {n}")
+            problems.append(f"{where}: span [{s},{e}) exceeds text length {n}")
+        elif text[s:e] != f.mention:
+            problems.append(f"{where}: span [{s},{e}) quotes {text[s:e]!r}, "
+                            f"but the mention says {f.mention!r}")
 
     _check("effective_date", result.effective_date)
     for i, ch in enumerate(result.changes):
-        for name, f in ch.fields.items():
-            _check(f"changes[{i}].{name}", f)
+        for f in ch.fields:
+            _check(f"changes[{i}].{f.name}", f)
+    if problems:
+        raise ValueError("citations do not quote the text:\n  " + "\n  ".join(problems))
 
 
 def missing_required(change: "Change | ExtractedChange") -> list[str]:
-    """Required names absent from a change. A present change with these missing cannot become READY."""
-    return [n for n in REQUIRED_FIELDS[change.kind] if n not in change.fields]
+    """Required names absent from a change. A present change with these missing cannot become READY.
+    Workflow changes hold a name → Field dict; extraction changes hold a list of named fields."""
+    present = set(change.fields) if isinstance(change.fields, dict) else {f.name for f in change.fields}
+    return [n for n in REQUIRED_FIELDS[change.kind] if n not in present]
 
 
 # =====================================================================================
@@ -228,7 +263,7 @@ class ReorgIntent(BaseModel):
             sent_at=sent_at,
             effective_date=Field.from_extracted(result.effective_date),
             changes=[Change(kind=c.kind, notes=c.notes,
-                            fields={n: Field.from_extracted(f) for n, f in c.fields.items()})
+                            fields={n: Field.from_extracted(f) for n, f in c.by_name().items()})
                      for c in result.changes],
             status="DRAFT",
         )

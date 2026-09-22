@@ -1,6 +1,11 @@
 """ModelClient — the seam. Prototype: Anthropic SDK. Production: the platform's gateway.
 
-LiveClient   real call; schema-constrained to ExtractionResult (model-facing schema only).
+LiveClient   real call; schema-constrained to ExtractionResult (model-facing schema only). Three
+             outcomes are not an extraction and each raises rather than passing a half-filled
+             result on: the model refused, the output was truncated, or the contract rejected the
+             answer. Only the last one carries the model's own words back (see
+             ExtractionRejected) — a refusal and a truncation fail as invalid JSON inside the SDK's
+             own validation, which runs before any stop_reason is visible here.
 ReplayClient returns a recorded real response. A recording is bound to sha256(input text + system
              prompt + schema version); a different input or prompt has no recording and fails
              clearly instead of replaying someone else's answer.
@@ -11,6 +16,8 @@ import json
 import os
 from pathlib import Path
 from typing import Protocol
+
+from pydantic import ValidationError
 
 from .contracts import ExtractionResult, now_iso, sha256_of
 
@@ -43,11 +50,23 @@ class LiveClient:
         self.model = model
 
     def extract(self, system: str, user: str) -> tuple[ExtractionResult, dict]:
-        resp = self._client.messages.parse(
-            model=self.model, max_tokens=16000, system=system,
-            messages=[{"role": "user", "content": user}],
-            output_format=ExtractionResult,
-        )
+        try:
+            resp = self._client.messages.parse(
+                model=self.model, max_tokens=16000, system=system,
+                messages=[{"role": "user", "content": user}],
+                output_format=ExtractionResult,
+            )
+        except ValidationError as e:
+            # Reached whenever the response is not a contract-valid ExtractionResult — including a
+            # refusal or a truncation, which parse() rejects as invalid JSON before the stop_reason
+            # checks below can run. The raw text is in the error, so the prompt loop stays debuggable.
+            raise ExtractionRejected.from_validation_error(e) from e
+        if resp.stop_reason == "refusal":
+            raise ExtractionUnavailable(f"model declined to answer (stop_details={resp.stop_details})")
+        if resp.stop_reason == "max_tokens":
+            raise ExtractionUnavailable("output hit max_tokens — the extraction is truncated, not partial")
+        if resp.parsed_output is None:
+            raise ExtractionUnavailable(f"no parsed output (stop_reason={resp.stop_reason})")
         result: ExtractionResult = resp.parsed_output
         meta = {
             "key": recording_key(system, user), "schema_version": SCHEMA_VERSION,
@@ -59,7 +78,27 @@ class LiveClient:
         return result, meta
 
 
-class ReplayMismatch(RuntimeError):
+class ExtractionUnavailable(RuntimeError):
+    """The call returned, but not an extraction. Never silently treated as an empty result."""
+
+
+class ExtractionRejected(ExtractionUnavailable):
+    """The model answered and the CONTRACT threw the answer out. Carries what it actually said."""
+
+    @classmethod
+    def from_validation_error(cls, e: ValidationError) -> "ExtractionRejected":
+        """The SDK validates the response inside messages.parse(), so a violation arrives as a
+        pydantic ValidationError and the ParsedMessage never exists. The offending value travels in
+        each error's `input`, which is the whole response body when the model returned prose
+        (a refusal) or stopped mid-object (a truncation), and the offending sub-object otherwise —
+        so the failure is reported with the model's own words, not just a type name."""
+        lines = [f"{'.'.join(str(p) for p in err['loc']) or '(whole response)'}: {err['msg']}\n"
+                 f"      model sent: {err['input']!r}"[:600] for err in e.errors()[:5]]
+        return cls("the model's output does not satisfy the extraction contract:\n    "
+                   + "\n    ".join(lines))
+
+
+class ReplayMismatch(ExtractionUnavailable):
     pass
 
 
