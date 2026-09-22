@@ -1,15 +1,23 @@
-"""Compare a model ExtractionResult against the hand-written answer key, field by field.
+"""Compare what the model produced against the answer key, field by field.
 
-What counts as a match: same change kinds in the same order; same field names (order within a
-change does not matter); same cited/unresolved
-status; same mention and span for cited fields. Question wording is not compared (presence is).
+The answer key is fixtures/intent_expected.json: how a person read the same message, written down
+before any model was run. This file is what turns "the output looks about right" into a pass or a
+list of specific differences.
+
+What has to match: the same kinds of change, in the same order; the same field names on each
+change; and for every field, the same choice between quoting the message and asking a question.
+Where a field quotes the message, the quoted words and their location both have to match.
+
+What is not compared: the wording of a question. We check that a question is there, not that it is
+phrased the way the key phrases it. Two reviewers would word it differently and both be right.
 """
 from __future__ import annotations
 
-from .contracts import ExtractedField, ExtractionResult
+from .contracts import ExtractedField, ExtractionResult, NamedExtractedField
 
 
-def _field(label: str, exp: ExtractedField, got: ExtractedField | None) -> list[str]:
+def _field(label: str, exp: NamedExtractedField | ExtractedField,
+           got: NamedExtractedField | ExtractedField | None) -> list[str]:
     if got is None:
         return [f"{label}: missing"]
     if exp.unresolved != got.unresolved:

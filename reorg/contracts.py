@@ -1,11 +1,64 @@
-"""Typed contracts — every arrow in the design is one of these, serialized to JSON in runs/<id>/.
+"""The data shapes used everywhere else in this project.
 
-Two families, deliberately separate (Phase 1 review, A1):
-  MODEL-FACING   ExtractedField / ExtractedChange / ExtractionResult — the only shapes the model can
-                 produce. No ids, no status, no resolution. The schema requires evidence or an
-                 explicit unresolved result; validation and review check correctness.
-  WORKFLOW       Field / Change / ReorgIntent / Finding / Approval / Plan … — owned by application
-                 code. Built FROM an ExtractionResult; never parsed from a model response.
+Each step of the pipeline hands the next one an object defined here, and every object gets written
+to disk as JSON in runs/<id>/. That folder is the audit trail.
+
+HOW TO READ THIS FILE
+
+It is long, but most of the length is lists of field names on simple containers. SourceRecord,
+RedactedText, Finding, Approval, StepDef, StepInstance, Plan, HumanTask and DryRunReport are just
+bags of data. There is nothing to explain in them beyond the names.
+
+The real content is five decisions:
+
+1. There are two groups of classes, and they are kept apart on purpose.
+
+   The first group is the only thing the AI model is allowed to send back: ExtractedField,
+   NamedExtractedField, ExtractedChange and ExtractionResult. None of them has an id, a status, or
+   a decision about who a name refers to. That is the point. Because those fields do not exist, a
+   model response has no way to say "approved", even if the message it read tried to tell it to.
+
+   The second group is ours: Field, Change, ReorgIntent, Finding, Approval, Plan and the rest. Our
+   code creates these from a model response. We never let a model response become one directly.
+
+2. Every value the model gives us is one of exactly two things.
+
+   Either it quotes the message (the exact words, plus where those words are in the text), or it
+   says the message does not give that value and asks a question a person can answer. Never both,
+   and never neither. One function enforces this: _cited_xor_unresolved.
+
+3. Each kind of change has a fixed list of allowed field names.
+
+   That list lives in one place, the REQUIRED_FIELDS and OPTIONAL_FIELDS tables. The instructions
+   we send the model are written from the same tables. If the model sends a field name that is not
+   on the list, we reject the whole response rather than ignore the extra field.
+
+   When you add a new kind of change, change the tables first and the instructions second.
+
+4. Field, in the second group, deliberately breaks rule 2.
+
+   Once a person is involved, a value can be in a state the model can never produce. Two examples,
+   both from the demo. The message says "Sam" and there are three Sams in the directory: we keep
+   the quote AND add a question, which rule 2 forbids. A person then answers with an employee id:
+   that value has no quote at all, because it was never in the message, so we record who supplied
+   it instead of inventing a location in the text for it.
+
+5. ReorgIntent.fingerprint() is how an approval stays attached to what was approved.
+
+   It hashes the content of the intent and deliberately leaves out the status and the generated id.
+   If anyone edits what was approved, the hash changes, and the earlier approvals no longer match
+   it. Nothing can be compiled or executed against an approval that no longer matches.
+
+ONE THING THAT IS EASY TO MISS
+
+The first group of classes is sent to the model, not just used to check its reply. Pydantic reads
+these class definitions and produces a JSON schema, which is a precise description of the shape of
+answer we will accept. We send that description with the request, and the model is then forced to
+answer in that shape.
+
+So these classes are part of the prompt. The order of the fields, whether a field is optional, the
+docstrings and the per-field descriptions are all read by the model. Changing them changes what the
+model does. tests/test_extraction_schema.py guards the parts of that which have already bitten us.
 """
 from __future__ import annotations
 
@@ -30,9 +83,11 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# Adding a kind = its field spec below, its steps in registry/steps.yaml, its rules in validate.py,
-# and a line in the extraction prompt. The docstring is model-facing (it becomes the enum's schema
-# description), so it says only what the model needs.
+# To add a new kind of change you have to touch four places: the field tables below, the steps in
+# registry/steps.yaml, the rules in validate.py, and the instructions we send the model.
+#
+# The docstring below is one of the ones the model reads, so it only says what the model needs to
+# know. The maintenance note stays up here in a comment, where the model never sees it.
 class ChangeKind(str, Enum):
     """The kinds of change this system handles. Only COST_CENTER_SPLIT and COMP_CHANGE can be
     extracted; the others are named but not built, and must not be used."""
@@ -63,6 +118,31 @@ OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
 # =====================================================================================
 # MODEL-FACING — the only thing the model can produce
 # =====================================================================================
+# Rule 2 from the top of the file, in code. Both of the classes below call this from their
+# validator, which pydantic runs automatically every time one of them is created or loaded from
+# JSON. If it raises, the object does not get created at all.
+#
+# It is a plain function rather than a shared parent class so that each class can list its own
+# fields in the order we want the model to fill them in. See the comment above NamedExtractedField.
+def _cited_xor_unresolved(f: ExtractedField | NamedExtractedField):
+    """Either the field quotes the message, or it asks a question. Never both, never neither."""
+    cited = f.mention is not None or f.source_span is not None
+    if f.unresolved:
+        if cited:
+            raise ValueError("a field is cited or unresolved, not both")
+        if not (f.question and f.question.strip()):
+            raise ValueError("unresolved field requires a question")
+    else:
+        if not (f.mention and f.mention.strip()):
+            raise ValueError("cited field requires a mention")
+        if not (isinstance(f.source_span, list) and len(f.source_span) == 2):
+            raise ValueError("cited field requires source_span [start, end]")
+        s, e = f.source_span
+        if not (isinstance(s, int) and isinstance(e, int) and 0 <= s < e):
+            raise ValueError("source_span must satisfy 0 <= start < end")
+    return f
+
+
 class ExtractedField(BaseModel):
     """One value taken from the message. Either CITED — the words plus where they are — or
     UNRESOLVED with the question a reviewer would have to answer. Never both, never neither. A
@@ -83,39 +163,56 @@ class ExtractedField(BaseModel):
 
     @model_validator(mode="after")
     def _one_shape(self):
-        cited = self.mention is not None or self.source_span is not None
-        if self.unresolved:
-            if cited:
-                raise ValueError("a field is cited or unresolved, not both")
-            if not (self.question and self.question.strip()):
-                raise ValueError("unresolved field requires a question")
-        else:
-            if not (self.mention and self.mention.strip()):
-                raise ValueError("cited field requires a mention")
-            if not (isinstance(self.source_span, list) and len(self.source_span) == 2):
-                raise ValueError("cited field requires source_span [start, end]")
-            s, e = self.source_span
-            if not (isinstance(s, int) and isinstance(e, int) and 0 <= s < e):
-                raise ValueError("source_span must satisfy 0 <= start < end")
-        return self
+        return _cited_xor_unresolved(self)
 
 
-# _FieldName exists only to put `name` FIRST in the schema: pydantic orders fields by reverse MRO,
-# so the base listed last below contributes its field first (test_field_name_comes_first pins it).
-# Order is not cosmetic — the model fills the object in that order, so it has to say WHICH field it
-# is answering before it commits to evidence. With `name` last, the first live call derailed:
-# entries came back holding a name and nothing else (log #23).
-class _FieldName(BaseModel):
-    name: str = PField(description="which field of this change kind this entry fills")
-
-
-# Why a list and not a {name: field} map: structured outputs cannot express an object whose keys the
-# model chooses — the SDK strips `additionalProperties: <schema>` and sends `additionalProperties:
-# false` with no properties, a grammar permitting only an EMPTY object (tests/test_extraction_schema
-# .py). So the name travels with the field and application code mints the map (log #20).
-class NamedExtractedField(ExtractedField, _FieldName):
+# Two things about this class are worth knowing, because both were learned the hard way.
+#
+# FIRST: the six fields below are copied from ExtractedField above, on purpose, instead of
+# inheriting them.
+#
+# The model writes its answer one field at a time, in the order the fields appear here. So `name`
+# has to come first. That way the model states which field it is answering before it has to produce
+# the words and the location for it. The first time we made a real call, `name` was last, and the
+# answer fell apart: we got back entries that had a name and nothing else, and one of the names had
+# a stray comma inside it.
+#
+# Inheriting from ExtractedField would put `name` last again. There is a way to inherit and still
+# get `name` first, but it depends on a subtle rule about how Python orders inherited attributes,
+# and explaining it took a paragraph. Copying six lines is easier to read. The test
+# test_field_name_comes_first fails if the order is ever changed back.
+#
+# SECOND: a change holds a LIST of these, rather than a dictionary that maps a field name to its
+# value, which would be the more natural way to write it in Python.
+#
+# The reason is a limit in how the model is constrained. We send the model a description of the
+# shape of answer we will accept. That description has no way to say "an object whose key names the
+# model picks at runtime". When we tried, the library quietly rewrote it into "an object that is
+# allowed no contents at all", which would have forced the model to return an empty answer for
+# every field. We caught it before the first real call.
+#
+# So each entry carries its own name, and our code builds the dictionary afterwards, in by_name().
+class NamedExtractedField(BaseModel):
     """One field of a change: which field it is, then either the words that state it or the
     question that would settle it."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = PField(description="which field of this change kind this entry fills")
+    entity_type: EntityType = PField(description="what kind of thing this value is")
+    mention: Optional[str] = PField(
+        default=None, description="the exact words from the message, copied verbatim; null when unresolved")
+    source_span: Optional[list[int]] = PField(
+        default=None, description="[start, end) character offsets of `mention` in the message text, "
+                                  "counted from 0; null when unresolved")
+    unresolved: bool = PField(
+        default=False, description="true when the message does not state this value; then `question` "
+                                   "is required and `mention`/`source_span` must be null")
+    question: Optional[str] = PField(
+        default=None, description="what a reviewer must answer; required when unresolved, null otherwise")
+
+    @model_validator(mode="after")
+    def _one_shape(self):
+        return _cited_xor_unresolved(self)
 
 
 class ExtractedChange(BaseModel):
@@ -126,7 +223,10 @@ class ExtractedChange(BaseModel):
     notes: Optional[str] = None
 
     def by_name(self) -> dict[str, NamedExtractedField]:
-        """name → field. Duplicate names are rejected below, so nothing is silently dropped here."""
+        """Turn the list of fields into a dictionary keyed by field name.
+
+        Safe to do because the validator below rejects a response that uses the same field name
+        twice, so building the dictionary can never quietly throw one of them away."""
         return {f.name: f for f in self.fields}
 
     @model_validator(mode="after")
@@ -157,18 +257,24 @@ class ExtractionResult(BaseModel):
 
 
 def validate_citations(result: ExtractionResult, text: str) -> None:
-    """Every citation must QUOTE the exact text the model was shown: the span lies inside the text,
-    and the words at that span are the mention, character for character.
+    """Check that every quote really is a quote.
 
-    A span that fits but points elsewhere is the failure this catches — the value would look cited
-    while its evidence pointed at unrelated words, and a reviewer comparing the two side by side
-    would be comparing the model's claim against itself. Every mismatch is reported at once, so one
-    run tells you everything rather than one problem at a time. Fail closed: the caller gets no
-    ExtractionResult at all."""
+    Each quoted value comes with a location: a start and end position in the message. This checks
+    two things about it. The location has to be inside the message, and the words sitting at that
+    location have to be exactly the words the model claims to have quoted.
+
+    The second check is the one that matters. Without it the model could hand us a location that is
+    inside the message but points at the wrong words. The value would still look properly sourced.
+    A reviewer told to compare the value against the message would really be comparing the model's
+    claim against the model's own claim, which proves nothing.
+
+    All problems are collected and reported together, so one run tells you everything that is wrong
+    instead of making you fix them one at a time. If anything is wrong, nothing is returned: the
+    caller gets an error rather than a result with a bad quote in it."""
     n = len(text)
     problems: list[str] = []
 
-    def _check(where: str, f: ExtractedField) -> None:
+    def _check(where: str, f: ExtractedField | NamedExtractedField) -> None:
         if f.unresolved:
             return
         s, e = f.source_span
@@ -214,13 +320,22 @@ class RedactedText(BaseModel):
 
 
 class Field(BaseModel):
-    """Workflow field. Does NOT inherit the extraction-only "cited xor unresolved" rule, because a
-    workflow field has to represent states the model never produces:
-      - cited AND unresolved: the Resolver found more than one match ("Sam") — the original evidence
-        is kept, and a question + candidates are added
-      - supplied by a human: the answer to an unresolved field (cost center 4410). No source span is
-        fabricated for it; `supplied_by` records who answered.
-    Evidence (mention/source_span) is copied from the ExtractedField and never edited afterwards."""
+    """One value, once our own code owns it. This is rule 4 from the top of the file.
+
+    It looks like the model's version of a field, but the rules are looser, because a value can end
+    up in states the model can never produce:
+
+      Quoted AND still unanswered. The message said "Sam" and the directory has three of them. We
+      keep the original quote and add a question plus the list of candidates. The model's version
+      of a field forbids this combination; here it is normal.
+
+      Answered by a person. Someone replies that the new cost centre is 4410. That value was never
+      in the message, so it has no quote and no location, and we do not invent one. `supplied_by`
+      records who answered instead.
+
+    The quote and its location are copied from what the model said and are never edited afterwards.
+    Everything a human or the Resolver adds goes in the other fields, so the two are always told
+    apart on screen and in the saved files."""
     model_config = ConfigDict(extra="forbid")
 
     entity_type: EntityType
@@ -245,7 +360,7 @@ class Field(BaseModel):
         return self
 
     @classmethod
-    def from_extracted(cls, f: ExtractedField) -> "Field":
+    def from_extracted(cls, f: "ExtractedField | NamedExtractedField") -> "Field":
         return cls(entity_type=f.entity_type, mention=f.mention, source_span=f.source_span,
                    unresolved=f.unresolved, question=f.question)
 
@@ -271,7 +386,10 @@ class ReorgIntent(BaseModel):
 
     @classmethod
     def from_extraction(cls, result: ExtractionResult, source_id: str, sent_at: str) -> "ReorgIntent":
-        """The only way a model output becomes workflow state. Ids and status are minted here."""
+        """The one place a model response turns into something our workflow owns.
+
+        The id and the starting status are created here, by us. Nothing the model sent can set
+        them, because its half of the contract has no such fields."""
         return cls(
             id=f"intent_{uuid.uuid4().hex[:8]}",
             source_id=source_id,
@@ -284,7 +402,11 @@ class ReorgIntent(BaseModel):
         )
 
     def fingerprint(self) -> str:
-        """Hash of content only — status and generated id excluded, so approval binds to *what*."""
+        """A hash of what this intent actually says.
+
+        The status and the generated id are left out, so an approval is attached to the content and
+        nothing else. Approve it, then change one word of it, and the hash no longer matches the
+        one stored with the approval. This is rule 5 from the top of the file."""
         d = self.model_dump(mode="json")
         d.pop("status"); d.pop("id")
         return sha256_of(d)

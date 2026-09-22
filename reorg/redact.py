@@ -1,8 +1,11 @@
 """2. Redactor — deterministic pre-pass for compensation figures.
 
-Scope, stated plainly: this handles the compensation formats below, not PII in general. Names and
-org relationships remain in the text by design (the Extractor needs them). The map stays local and
-is rehydrated only into the ReviewPacket for permitted roles.
+What this does and does not do, stated plainly. It replaces pay figures in the formats matched
+below. It is not general-purpose personal-data removal. Names and team relationships stay in the
+text on purpose, because the model needs them to work out what the message is asking for.
+
+The list of what was replaced never leaves this machine. The real figures are put back only when
+the review packet is shown to someone whose role is allowed to see them.
 """
 from __future__ import annotations
 
