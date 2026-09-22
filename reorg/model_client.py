@@ -6,9 +6,10 @@ LiveClient   real call; schema-constrained to ExtractionResult (model-facing sch
              answer. Only the last one carries the model's own words back (see
              ExtractionRejected) — a refusal and a truncation fail as invalid JSON inside the SDK's
              own validation, which runs before any stop_reason is visible here.
-ReplayClient returns a recorded real response. A recording is bound to sha256(input text + system
-             prompt + schema version); a different input or prompt has no recording and fails
-             clearly instead of replaying someone else's answer.
+ReplayClient returns a recorded real response. A recording is bound to the input text, the system
+             prompt, and the SCHEMA ITSELF — not to a version string someone has to remember to
+             bump. A different input, prompt, or schema has no recording and fails clearly instead
+             of replaying an answer given under different conditions.
 """
 from __future__ import annotations
 
@@ -22,7 +23,8 @@ from pydantic import ValidationError
 from .contracts import ExtractionResult, now_iso, sha256_of
 
 MODEL_ID = "claude-opus-5"
-SCHEMA_VERSION = "extraction-v1"
+SCHEMA_VERSION = "extraction-v1"                              # human label, for the audit trail
+SCHEMA_SHA256 = sha256_of(ExtractionResult.model_json_schema())  # what actually binds a recording
 
 
 def _load_dotenv() -> None:
@@ -35,7 +37,11 @@ def _load_dotenv() -> None:
 
 
 def recording_key(system: str, user: str) -> str:
-    return sha256_of(f"{SCHEMA_VERSION}\n{system}\n{user}")[:16]
+    """The schema hash is in here deliberately. A hand-maintained version string is a promise to
+    remember something, and it broke twice in one session: the extraction schema changed shape
+    (a map became a list, then the field order changed) while `extraction-v1` sat still, and the
+    replay guard would have served an answer given under a schema that no longer existed."""
+    return sha256_of(f"{SCHEMA_VERSION}\n{SCHEMA_SHA256}\n{system}\n{user}")[:16]
 
 
 class ModelClient(Protocol):
@@ -70,6 +76,7 @@ class LiveClient:
         result: ExtractionResult = resp.parsed_output
         meta = {
             "key": recording_key(system, user), "schema_version": SCHEMA_VERSION,
+            "schema_sha256": SCHEMA_SHA256,
             "input_sha256": sha256_of(user), "prompt_sha256": sha256_of(system),
             "model": resp.model, "ts": now_iso(),
             "usage": resp.usage.model_dump() if hasattr(resp.usage, "model_dump") else dict(resp.usage),
@@ -114,9 +121,14 @@ class ReplayClient:
                 f"no recording for this input/prompt/schema (key {key}). "
                 f"Run with --live --record to create one; replay never substitutes another message's answer.")
         rec = json.loads(path.read_text())
-        if rec.get("input_sha256") != sha256_of(user) or rec.get("prompt_sha256") != sha256_of(system) \
-                or rec.get("schema_version") != SCHEMA_VERSION:
-            raise ReplayMismatch(f"recording {path} does not match current input/prompt/schema")
+        for label, recorded, current in (("input", rec.get("input_sha256"), sha256_of(user)),
+                                         ("prompt", rec.get("prompt_sha256"), sha256_of(system)),
+                                         ("schema", rec.get("schema_sha256"), SCHEMA_SHA256),
+                                         ("schema_version", rec.get("schema_version"), SCHEMA_VERSION)):
+            if recorded != current:
+                raise ReplayMismatch(
+                    f"recording {path} was made under a different {label} "
+                    f"({recorded} != {current}) — re-record with --live --record")
         meta = {k: rec[k] for k in ("model", "ts", "usage", "key") if k in rec}
         meta["replayed_from"] = str(path)
         return ExtractionResult.model_validate(rec["raw"]), meta

@@ -30,10 +30,12 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+# Adding a kind = its field spec below, its steps in registry/steps.yaml, its rules in validate.py,
+# and a line in the extraction prompt. The docstring is model-facing (it becomes the enum's schema
+# description), so it says only what the model needs.
 class ChangeKind(str, Enum):
-    """Every change type the design recognizes. Only SUPPORTED_KINDS are built in this prototype;
-    the rest are the extension roadmap. Adding one = add its field spec below, its steps in
-    registry/steps.yaml, its rules in validate.py, and a line in the extraction prompt."""
+    """The kinds of change this system handles. Only COST_CENTER_SPLIT and COMP_CHANGE can be
+    extracted; the others are named but not built, and must not be used."""
     COST_CENTER_SPLIT = "COST_CENTER_SPLIT"   # supported
     COMP_CHANGE = "COMP_CHANGE"               # supported
     TEAM_MOVE = "TEAM_MOVE"                   # planned
@@ -62,16 +64,22 @@ OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
 # MODEL-FACING — the only thing the model can produce
 # =====================================================================================
 class ExtractedField(BaseModel):
-    """Either CITED (mention + source_span into the redacted text) or UNRESOLVED (question).
-    Never both, never neither. A cited span must quote its mention exactly; validate_citations()
-    checks that against the text the model was actually shown."""
+    """One value taken from the message. Either CITED — the words plus where they are — or
+    UNRESOLVED with the question a reviewer would have to answer. Never both, never neither. A
+    cited span must quote its mention exactly; it is checked against the text you were shown."""
     model_config = ConfigDict(extra="forbid")
 
-    entity_type: EntityType
-    mention: Optional[str] = None
-    source_span: Optional[list[int]] = None      # [start, end) into RedactedText.text
-    unresolved: bool = False
-    question: Optional[str] = None
+    entity_type: EntityType = PField(description="what kind of thing this value is")
+    mention: Optional[str] = PField(
+        default=None, description="the exact words from the message, copied verbatim; null when unresolved")
+    source_span: Optional[list[int]] = PField(
+        default=None, description="[start, end) character offsets of `mention` in the message text, "
+                                  "counted from 0; null when unresolved")
+    unresolved: bool = PField(
+        default=False, description="true when the message does not state this value; then `question` "
+                                   "is required and `mention`/`source_span` must be null")
+    question: Optional[str] = PField(
+        default=None, description="what a reviewer must answer; required when unresolved, null otherwise")
 
     @model_validator(mode="after")
     def _one_shape(self):
@@ -92,15 +100,22 @@ class ExtractedField(BaseModel):
         return self
 
 
-class NamedExtractedField(ExtractedField):
-    """A field inside a change, carrying its own name.
+# _FieldName exists only to put `name` FIRST in the schema: pydantic orders fields by reverse MRO,
+# so the base listed last below contributes its field first (test_field_name_comes_first pins it).
+# Order is not cosmetic — the model fills the object in that order, so it has to say WHICH field it
+# is answering before it commits to evidence. With `name` last, the first live call derailed:
+# entries came back holding a name and nothing else (log #23).
+class _FieldName(BaseModel):
+    name: str = PField(description="which field of this change kind this entry fills")
 
-    Why not a dict? Structured outputs cannot express an object with model-chosen keys: the SDK
-    strips `additionalProperties: <schema>` and sends `additionalProperties: false` with no
-    properties, which constrains the model to emit an EMPTY object (see
-    tests/test_extraction_schema.py). So the wire shape is a list, the name travels with the field,
-    and application code mints the name → field map."""
-    name: str
+
+# Why a list and not a {name: field} map: structured outputs cannot express an object whose keys the
+# model chooses — the SDK strips `additionalProperties: <schema>` and sends `additionalProperties:
+# false` with no properties, a grammar permitting only an EMPTY object (tests/test_extraction_schema
+# .py). So the name travels with the field and application code mints the map (log #20).
+class NamedExtractedField(ExtractedField, _FieldName):
+    """One field of a change: which field it is, then either the words that state it or the
+    question that would settle it."""
 
 
 class ExtractedChange(BaseModel):

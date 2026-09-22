@@ -41,6 +41,24 @@ def test_field_names_reach_the_model():
     assert "name" in entry["properties"] and "name" in entry["required"]
 
 
+def test_field_name_comes_first():
+    """The model fills an object in property order, so it must say which field it is answering
+    before it commits to evidence. `name` comes from the _FieldName base for exactly this reason
+    (pydantic orders fields by reverse MRO); if that ever silently flips, the first live call's
+    failure comes back — entries holding a name and nothing else."""
+    props = list(ExtractionResult.model_json_schema()["$defs"]["NamedExtractedField"]["properties"])
+    assert props[0] == "name", f"name must be the first property, got {props}"
+
+
+def test_the_model_facing_schema_carries_no_implementation_notes():
+    """Every docstring on these classes ships to the model as a schema `description` — it is prompt
+    surface, not internal commentary."""
+    schema = json.dumps(ExtractionResult.model_json_schema())
+    for leak in ("additionalProperties: <schema>", "registry/steps.yaml", "reverse MRO",
+                 "tests/test_extraction_schema", "validate_citations()", "log #"):
+        assert leak not in schema, f"{leak!r} is being sent to the model"
+
+
 def test_schema_the_sdk_actually_sends_has_no_empty_object():
     """Belt and braces: run the SDK's own transform and check nothing collapsed to an empty shape."""
     transform = pytest.importorskip("anthropic.lib._parse._transform", reason="SDK internals moved")

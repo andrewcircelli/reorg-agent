@@ -16,8 +16,8 @@ import pytest
 from pydantic import ValidationError
 
 from reorg.contracts import ExtractionResult
-from reorg.model_client import (ExtractionRejected, ExtractionUnavailable, LiveClient,
-                                SCHEMA_VERSION, recording_key, sha256_of)
+from reorg.model_client import (SCHEMA_SHA256, SCHEMA_VERSION, ExtractionRejected,
+                                ExtractionUnavailable, LiveClient, recording_key, sha256_of)
 
 GOOD = {"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]},
         "changes": []}
@@ -103,4 +103,5 @@ def test_a_good_response_is_recorded_against_its_input_and_prompt():
     assert meta["input_sha256"] == sha256_of("msg")
     assert meta["prompt_sha256"] == sha256_of("sys")
     assert meta["schema_version"] == SCHEMA_VERSION
+    assert meta["schema_sha256"] == SCHEMA_SHA256, "the recording must bind to the schema itself"
     assert meta["raw"] == result.model_dump(mode="json"), "the recording holds the whole result"

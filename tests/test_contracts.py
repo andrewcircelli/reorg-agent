@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult, Field,
                              NamedExtractedField, ReorgIntent, missing_required, sha256_of,
                              validate_citations)
-from reorg.model_client import ReplayClient, ReplayMismatch, recording_key, record
+from reorg.model_client import (SCHEMA_SHA256, ReplayClient, ReplayMismatch, recording_key,
+                                record)
 
 
 def cited(t="worker", m="Sam", span=(0, 3), **kw):
@@ -145,16 +146,30 @@ def test_fingerprint_ignores_status_and_id_but_not_content():
     assert a.fingerprint() != c.fingerprint()
 
 
-def test_replay_refuses_a_different_input(tmp_path):
+def _recording(**overrides):
     meta = {"key": recording_key("sys", "msg A"), "schema_version": "extraction-v1",
+            "schema_sha256": SCHEMA_SHA256,
             "input_sha256": sha256_of("msg A"),
             "prompt_sha256": sha256_of("sys"),
             "raw": {"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]}, "changes": []}}
-    record(meta, tmp_path)
+    meta.update(overrides)
+    return meta
+
+
+def test_replay_refuses_a_different_input(tmp_path):
+    record(_recording(), tmp_path)
     ok, _ = ReplayClient(tmp_path).extract("sys", "msg A")
     assert ok.effective_date.mention == "Oct 1"
     with pytest.raises(ReplayMismatch):
         ReplayClient(tmp_path).extract("sys", "msg B — injection variant")
+
+
+def test_replay_refuses_a_recording_made_under_a_different_schema(tmp_path):
+    """The failure a version string cannot catch: same prompt, same message, schema since reshaped.
+    The recorded answer was valid under a contract that no longer exists."""
+    record(_recording(schema_sha256="0" * 64), tmp_path)
+    with pytest.raises(ReplayMismatch, match="different schema"):
+        ReplayClient(tmp_path).extract("sys", "msg A")
 
 
 # ---- workflow Field: states the model never produces must survive a save/reload -------------------
