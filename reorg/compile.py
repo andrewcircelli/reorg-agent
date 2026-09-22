@@ -38,6 +38,10 @@ class RegistryError(RuntimeError):
     """The registry itself is wrong. Better to refuse than to build a plan from a broken checklist."""
 
 
+class PlanRefused(RuntimeError):
+    """The request cannot be turned into a plan this version can carry out honestly."""
+
+
 def registry_version(path: str | Path = "registry/steps.yaml") -> str:
     """A hash of the step registry as it stands right now.
 
@@ -136,6 +140,17 @@ def _params(step: StepDef, intent: ReorgIntent) -> dict:
 def compile_plan(intent: ReorgIntent, registry: list[StepDef], version: str,
                  reference_sha256: str) -> Plan:
     """Build the ordered plan for one approved request."""
+    # Steps are chosen per kind of change, so one step would have to stand for several changes of
+    # the same kind and could only carry one set of values. The Validator blocks this before anyone
+    # can approve it; the check is repeated here so that no path produces a plan quietly missing a
+    # change the request asked for.
+    kinds = [change.kind for change in intent.changes]
+    repeated = sorted({k.value for k in kinds if kinds.count(k) > 1})
+    if repeated:
+        raise PlanRefused(
+            f"this request has more than one change of the same kind ({', '.join(repeated)}), and a "
+            f"plan would carry only the last of each. Split them into separate requests.")
+
     chosen = order(select(registry, intent))
     intent_sha256 = intent.fingerprint()
 

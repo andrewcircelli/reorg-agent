@@ -151,3 +151,10 @@ def test_the_step_with_no_api_becomes_a_task_for_a_person(registry, jordan_inten
     assert "finance operations" in card
     assert "4410" in card                                   # the values it has to be done with
     assert "does not perform that check" in card            # what we are not claiming
+
+
+def test_the_compiler_will_not_quietly_drop_a_repeated_change(registry):
+    """The Validator blocks this before approval; the compiler refuses too, so that no path can
+    produce a plan missing a change the request asked for."""
+    with pytest.raises(compile_mod.PlanRefused, match="more than one change of the same kind"):
+        plan_for(registry, intent(comp(worker="10422"), comp(worker="20871")))

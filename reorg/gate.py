@@ -49,13 +49,35 @@ def status_for(findings: list[Finding]) -> str:
     return "NEEDS_RESOLUTION" if blocking else "READY"
 
 
-def outstanding_roles(intent: ReorgIntent, approvals: list[Approval]) -> list[str]:
-    """Which roles still have to approve this exact content.
+def applies_now(approval: Approval, intent: ReorgIntent,
+                registry_version: str, reference_sha256: str) -> bool:
+    """Does this approval still describe the situation we are in?
 
-    An approval only counts if it was given against the current content. That one comparison is
-    what makes an edit undo the approvals that came before it."""
-    fingerprint = intent.fingerprint()
-    signed = {a.role for a in approvals if a.intent_sha256 == fingerprint}
+    All three have to match: the content approved, the reference data it was checked against, and
+    the registry a plan would be built from. An approval given before any of them moved is not
+    wrong, and it is not deleted — it simply is not about this situation any more."""
+    return (approval.intent_sha256 == intent.fingerprint()
+            and approval.registry_version == registry_version
+            and approval.reference_sha256 == reference_sha256)
+
+
+def current_approvals(intent: ReorgIntent, approvals: list[Approval],
+                      registry_version: str, reference_sha256: str) -> list[Approval]:
+    """The approvals that count right now. The rest stay in the file as history."""
+    return [a for a in approvals if applies_now(a, intent, registry_version, reference_sha256)]
+
+
+def outstanding_roles(intent: ReorgIntent, approvals: list[Approval],
+                      registry_version: str, reference_sha256: str) -> list[str]:
+    """Which roles still have to approve the situation we are in.
+
+    Every part of the system asks this one question, so that "approved" means the same thing to the
+    review packet, to the approve command and to the compiler. It used to mean two different things:
+    the packet counted approvals matching the content, and the compiler separately refused if ANY
+    approval in the file named older reference data. Once reference data changed, re-approving could
+    not clear it — the stale entries were still there — and the request could never be compiled
+    again. Counting only what applies now is what makes recovery possible."""
+    signed = {a.role for a in current_approvals(intent, approvals, registry_version, reference_sha256)}
     return [role for role in required_roles(intent) if role not in signed]
 
 
@@ -129,7 +151,8 @@ def _describe(field: Field, source_text: str, redaction_map: dict) -> str:
 
 
 def render_packet(intent: ReorgIntent, findings: list[Finding], source_text: str,
-                  redaction_map: dict, approvals: list[Approval] | None = None) -> str:
+                  redaction_map: dict, approvals: list[Approval] | None = None,
+                  registry_version: str = "", reference_sha256: str = "") -> str:
     approvals = approvals or []
     out = [f"# Review packet — {intent.id}", "",
            f"From message `{intent.source_id}`, sent {intent.sent_at}.",
@@ -153,10 +176,16 @@ def render_packet(intent: ReorgIntent, findings: list[Finding], source_text: str
 
     out.append("## Approvals")
     for a in approvals:
-        matches = "" if a.intent_sha256 == intent.fingerprint() else \
-            "  ⚠ given for different content — no longer applies"
-        out.append(f"- {a.role}: {a.approver} at {a.ts}{matches}")
-    still = outstanding_roles(intent, approvals)
+        if applies_now(a, intent, registry_version, reference_sha256):
+            note = ""
+        elif a.intent_sha256 != intent.fingerprint():
+            note = "  ⚠ given for different content — no longer applies"
+        elif a.reference_sha256 != reference_sha256:
+            note = "  ⚠ given against different reference data — no longer applies"
+        else:
+            note = "  ⚠ given against a different step registry — no longer applies"
+        out.append(f"- {a.role}: {a.approver} at {a.ts}{note}")
+    still = outstanding_roles(intent, approvals, registry_version, reference_sha256)
     out.append(f"- still required: {', '.join(still) if still else 'none — fully approved'}")
     out.append("")
     out.append(f"Bound to content `{intent.fingerprint()[:12]}…`. "

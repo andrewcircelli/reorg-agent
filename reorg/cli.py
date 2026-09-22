@@ -48,6 +48,13 @@ def _reference() -> dict:
     return ref
 
 
+def _context() -> tuple[str, str]:
+    """The two things an approval is given against, besides the request itself: the step registry
+    and the reference data. Every command that asks "is this approved?" needs both, so that the
+    question means the same thing everywhere."""
+    return compile_mod.registry_version(), sha256_of(_reference())
+
+
 def _approvals(run: Path) -> list:
     path = run / "07_approvals.json"
     if not path.exists():
@@ -87,8 +94,10 @@ def cmd_validate(a):
     intent.status = gate.status_for(findings)
     _w(run, "04_resolved.json", intent)
     _w(run, "05_findings.json", {"findings": [f.model_dump(mode="json") for f in findings]})
+    registry_version, reference_sha256 = _context()
     packet = gate.render_packet(intent, findings, red_text,
-                                _r(run, "02_redaction_map.local.json"), _approvals(run))
+                                _r(run, "02_redaction_map.local.json"), _approvals(run),
+                                registry_version, reference_sha256)
     _w(run, "06_packet.md", packet)
     print()
     for f in findings:
@@ -103,22 +112,26 @@ def cmd_approve(a):
     intent = ReorgIntent.model_validate(_r(run, "04_resolved.json"))
     findings = [Finding.model_validate(f) for f in _r(run, "05_findings.json")["findings"]]
     src = SourceRecord.model_validate(_r(run, "01_source.json"))
+    registry_version, reference_sha256 = _context()
     try:
         appr = gate.approve(intent, findings, src, approver=a.as_, role=a.role or a.as_,
-                            registry_version=compile_mod.registry_version(),
-                            reference_sha256=sha256_of(_reference()))
+                            registry_version=registry_version,
+                            reference_sha256=reference_sha256)
     except gate.GateRefused as e:
         print(f"\n  REFUSED: {e}")
         sys.exit(2)
 
+    # Earlier approvals are kept. They are history; whether they still count is decided by
+    # gate.outstanding_roles, not by deleting them.
     approvals = _approvals(run) + [appr]
     _w(run, "07_approvals.json", {"approvals": [x.model_dump(mode="json") for x in approvals]})
-    still = gate.outstanding_roles(intent, approvals)
+    still = gate.outstanding_roles(intent, approvals, registry_version, reference_sha256)
     intent.status = "READY" if still else "APPROVED"
     _w(run, "04_resolved.json", intent)
     red_text = _r(run, "02_redacted.json")["text"]
     _w(run, "06_packet.md", gate.render_packet(intent, findings, red_text,
-                                               _r(run, "02_redaction_map.local.json"), approvals))
+                                               _r(run, "02_redaction_map.local.json"), approvals,
+                                               registry_version, reference_sha256))
 
     print(f"\n  recorded: {appr.role} approved by {appr.approver} at {appr.ts}")
     print(f"  bound to content {appr.intent_sha256[:12]}…, reference {appr.reference_sha256[:12]}…, "
@@ -133,27 +146,36 @@ def cmd_approve(a):
 def cmd_compile(a):
     run = Path(a.run)
     intent = ReorgIntent.model_validate(_r(run, "04_resolved.json"))
-    still = gate.outstanding_roles(intent, _approvals(run))
-    if intent.status != "APPROVED" or still:
-        print(f"\n  REFUSED: not approved as it currently stands "
-              f"(still required: {', '.join(still) or 'none, but status is ' + intent.status})")
-        sys.exit(2)
     reg, version = compile_mod.load_registry(a.registry)
     reference_sha256 = sha256_of(_reference())
 
-    # An approval named the registry and the reference data it was given against. If either has
-    # moved since, the approval is about a different situation and cannot carry this plan.
-    for approval in _approvals(run):
-        if approval.registry_version != version:
-            print(f"\n  REFUSED: the step registry has changed since {approval.role} approved. "
-                  f"Approved against {approval.registry_version[:12]}…, now {version[:12]}….")
-            sys.exit(2)
-        if approval.reference_sha256 != reference_sha256:
-            print(f"\n  REFUSED: the reference data has changed since {approval.role} approved. "
-                  f"Approved against {approval.reference_sha256[:12]}…, now {reference_sha256[:12]}….")
-            sys.exit(2)
+    # One question, asked the same way the packet and the approve command ask it: which roles have
+    # not approved the situation we are in? An approval given before the request, the reference data
+    # or the registry changed stays in the file, and stops counting.
+    still = gate.outstanding_roles(intent, _approvals(run), version, reference_sha256)
+    if still:
+        print(f"\n  REFUSED: not approved as it currently stands — still required: {', '.join(still)}")
+        for role in still:
+            for old in _approvals(run):
+                if old.role != role:
+                    continue
+                if old.intent_sha256 != intent.fingerprint():
+                    reason = "the request has been edited since"
+                elif old.reference_sha256 != reference_sha256:
+                    reason = "the reference data has changed since"
+                elif old.registry_version != version:
+                    reason = "the step registry has changed since"
+                else:
+                    continue
+                print(f"    {role} approved at {old.ts}, but {reason}. Re-approve to clear it.")
+                break
+        sys.exit(2)
 
-    plan = compile_mod.compile_plan(intent, reg, version, reference_sha256)
+    try:
+        plan = compile_mod.compile_plan(intent, reg, version, reference_sha256)
+    except (compile_mod.RegistryError, compile_mod.PlanRefused) as e:
+        print(f"\n  REFUSED: {e}")
+        sys.exit(2)
     _w(run, "08_plan.json", plan)
     tasks = compile_mod.human_tasks(plan, reg)
     _w(run, "09_tasks.md", compile_mod.render_task_cards(tasks))

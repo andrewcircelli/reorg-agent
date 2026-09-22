@@ -59,13 +59,13 @@ def test_finance_alone_does_not_approve_a_message_that_also_changes_pay():
     """The planted trap: the pay change rides along with the org change."""
     both = intent(split(), comp())
     finance = sign(both, "finance")
-    assert gate.outstanding_roles(both, [finance]) == ["comp_hr"]
+    assert gate.outstanding_roles(both, [finance], REGISTRY, REFERENCE) == ["comp_hr"]
 
 
 def test_both_roles_together_complete_it():
     both = intent(split(), comp())
     approvals = [sign(both, "finance"), sign(both, "comp_hr", approver="raj.comp")]
-    assert gate.outstanding_roles(both, approvals) == []
+    assert gate.outstanding_roles(both, approvals, REGISTRY, REFERENCE) == []
 
 
 # ---- what an approval is attached to -------------------------------------------------------------
@@ -85,10 +85,10 @@ def test_editing_the_request_after_approval_takes_the_approval_with_it():
     longer applies — not deleted, just no longer about this content."""
     both = intent(split(), comp())
     approvals = [sign(both, "finance"), sign(both, "comp_hr", approver="raj.comp")]
-    assert gate.outstanding_roles(both, approvals) == []
+    assert gate.outstanding_roles(both, approvals, REGISTRY, REFERENCE) == []
 
     both.changes[0].fields["target_cc"] = answered("cost_center", "4999")   # someone edits it
-    assert gate.outstanding_roles(both, approvals) == ["comp_hr", "finance"]
+    assert gate.outstanding_roles(both, approvals, REGISTRY, REFERENCE) == ["comp_hr", "finance"]
 
 
 def test_an_approval_for_other_content_does_not_count():
@@ -96,7 +96,7 @@ def test_an_approval_for_other_content_does_not_count():
     stale = Approval(intent_sha256="not-this-content", registry_version=REGISTRY,
                      reference_sha256=REFERENCE, approver="dana.finance", role="finance",
                      ts=now_iso())
-    assert gate.outstanding_roles(one, [stale]) == ["finance"]
+    assert gate.outstanding_roles(one, [stale], REGISTRY, REFERENCE) == ["finance"]
 
 
 # ---- the review packet ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ def test_a_quote_survives_a_person_answering_which_record_it_meant():
 
 def test_the_packet_says_who_still_has_to_approve():
     both = intent(split(), comp())
-    packet = gate.render_packet(both, [], TEXT, MAP, [sign(both, "finance")])
+    packet = gate.render_packet(both, [], TEXT, MAP, [sign(both, "finance")], REGISTRY, REFERENCE)
     assert "still required: comp_hr" in packet
 
 
@@ -150,7 +150,7 @@ def test_the_packet_flags_an_approval_that_no_longer_applies():
     both = intent(split(), comp())
     approvals = [sign(both, "finance")]
     both.changes[0].fields["target_cc"] = answered("cost_center", "4999")
-    assert "no longer applies" in gate.render_packet(both, [], TEXT, MAP, approvals)
+    assert "no longer applies" in gate.render_packet(both, [], TEXT, MAP, approvals, REGISTRY, REFERENCE)
 
 
 # ---- the demo surface: a typo has to come back as a sentence ---------------------------------------
@@ -168,3 +168,34 @@ def test_a_mistyped_resolve_argument_explains_itself():
         with _pytest.raises(SystemExit) as exit_info:
             _apply_resolutions(one, [bad])
         assert expected in str(exit_info.value), bad
+
+
+# ---- an approval is about a situation, and situations change ---------------------------------------
+def test_an_approval_stops_counting_when_the_reference_data_changes():
+    both = intent(split(), comp())
+    approvals = [sign(both, "finance"), sign(both, "comp_hr", approver="raj.comp")]
+    assert gate.outstanding_roles(both, approvals, REGISTRY, REFERENCE) == []
+    assert gate.outstanding_roles(both, approvals, REGISTRY, "different-reference") == ["comp_hr", "finance"]
+
+
+def test_re_approving_after_a_change_clears_it_and_the_old_entries_stay():
+    """The deadlock this replaced: compile refused on any stale approval in the file, so once the
+    reference data changed there was no way back — re-approving added new entries but the old ones
+    were still there and still refused. Only what applies now is counted."""
+    both = intent(split(), comp())
+    stale = [sign(both, "finance"), sign(both, "comp_hr", approver="raj.comp")]
+
+    fresh = [gate.approve(both, [], source(), approver=a, role=r,
+                          registry_version=REGISTRY, reference_sha256="reference-v2")
+             for a, r in (("dana.finance", "finance"), ("raj.comp", "comp_hr"))]
+
+    everything = stale + fresh
+    assert gate.outstanding_roles(both, everything, REGISTRY, "reference-v2") == []
+    assert len(everything) == 4, "the earlier approvals are kept as history, not deleted"
+
+
+def test_the_packet_says_which_kind_of_change_retired_an_approval():
+    both = intent(split(), comp())
+    approvals = [sign(both, "finance")]
+    packet = gate.render_packet(both, [], TEXT, MAP, approvals, REGISTRY, "different-reference")
+    assert "given against different reference data — no longer applies" in packet

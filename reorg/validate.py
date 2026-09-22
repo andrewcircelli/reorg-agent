@@ -9,7 +9,7 @@ reference data and returns a list of Findings. A Finding is just an observation 
     WARNING    proceed if you mean to, but look at this first
     INFO       something the approver should know, not a problem
 
-There are seven rules. Each one is a small function below that takes the request and the reference
+There are eight rules. Each one is a small function below that takes the request and the reference
 data and returns the findings it noticed. `validate` runs them in order and collects the lot. To
 add a rule, write the function and add it to the RULES list at the bottom. There is no framework
 here on purpose.
@@ -237,6 +237,29 @@ def required_roles(intent: ReorgIntent) -> list[str]:
     return sorted({ROLE_FOR_KIND[change.kind] for change in intent.changes})
 
 
+# ---------------------------------------------------------------------------------------------
+# Rule 8. One change of each kind per request.
+#
+# A stated limit of this version, enforced rather than assumed. The plan is built by choosing the
+# registry steps that apply to the kinds of change in the request, which gives one step per kind. Two
+# pay changes in one message would therefore produce one pay step, and the second change would quietly
+# overwrite the first — a request that was read correctly, approved, and then partly thrown away.
+#
+# Planning several changes of the same kind means one step instance per change, and with it an answer
+# for what happens when the third of five fails. That is worth building properly or not at all, so
+# this version refuses the input instead of mishandling it.
+# ---------------------------------------------------------------------------------------------
+def _one_change_per_kind(intent: ReorgIntent, reference: dict) -> list[Finding]:
+    kinds = [change.kind for change in intent.changes]
+    found = []
+    for kind in sorted({k for k in kinds if kinds.count(k) > 1}, key=lambda k: k.value):
+        found.append(Finding(
+            rule_id="R_ONE_PER_KIND", severity=Severity.BLOCKING, change_ref=None,
+            message=(f"this request contains {kinds.count(kind)} {kind.value} changes. This version "
+                     f"plans one change of each kind; split them into separate requests")))
+    return found
+
+
 # The rules, in the order they are reported. Add a function above, add it here, and that is all.
 RULES = (
     _unanswered,
@@ -245,6 +268,7 @@ RULES = (
     _cost_centres,
     _team_sits_in_source,
     _band_change,
+    _one_change_per_kind,
     _approval_roles,
 )
 

@@ -190,3 +190,17 @@ def test_the_team_rule_blames_the_message_only_when_the_message_is_to_blame():
     supplied = " ".join(f.message for f in check(change))
     assert "check which team and which cost centre are meant" in supplied
     assert "misread" not in supplied
+
+
+# ---- rule 8: a repeated change kind would be partly thrown away ----------------------------------
+def test_two_changes_of_the_same_kind_are_refused():
+    """The plan picks registry steps per kind of change, so two pay changes would produce one pay
+    step carrying only the second person. A request read correctly, approved, and then partly
+    discarded. This version refuses the input rather than mishandling it."""
+    findings = check(comp(worker="10422"), comp(worker="20871"))
+    assert "R_ONE_PER_KIND" in rules_fired(findings, Severity.BLOCKING)
+    assert "split them into separate requests" in " ".join(f.message for f in findings)
+
+
+def test_two_different_kinds_are_fine():
+    assert "R_ONE_PER_KIND" not in rules_fired(check(split(), comp()))
