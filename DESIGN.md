@@ -57,12 +57,6 @@ writing to these systems correctly depends on how each treats an effective date,
 write that arrives twice, and what it can be asked afterwards to confirm the change took. A simulated
 adapter answers all three the way I imagined them — my assumptions, with a green tick beside them.
 
-*What execution would take, in order.* Real access and real behavior first. Run in preview mode and
-compare what each system says would happen against what the plan says. Establish how every step is
-verified, including the one a person keys in by hand — "the API returned 200" and "the person said
-done" are both claims, not evidence. Then a narrow write path, supervised, with an answer ready for
-the case that matters: step three of five succeeds and step four does not.
-
 **No model-decided control flow.** See *Where the model is used* below. This is a deliberate
 architectural position, not an omission.
 
@@ -70,9 +64,8 @@ architectural position, not an omission.
 org graph stay. The design changes what approvers see, not what they are allowed to do.
 
 **No user surfaces.** The command line is a demo surface. In production these stages sit behind the
-tools people already use — Slack for the message, an approvals surface with real identity for the
-packet, a reply in the thread for "which Sam", a ticket for the manual GL step. The file contracts
-between stages are what those surfaces attach to. The judgment is not in the surfaces.
+tools people already use — Slack, an approvals surface with real identity, the existing ticket
+queue — and the file written between each stage is the seam those attach to.
 
 **Not who decides the reorg.** That is not a workflow question.
 
@@ -161,9 +154,8 @@ knowledge lives in a file with an owner and a review process, not in a prompt an
   designed, not built: execution and adapters · Exception Agent · Reconciler · connectors
 ```
 
-Every arrow is a typed object written to disk, so each stage can be read on its own. The run
-directory is the audit trail — inspectable, not tamper-proof; hashes do not make a folder
-append-only.
+Every arrow is a typed object written to disk. The run directory is the audit trail — inspectable,
+not tamper-proof; hashes do not make a folder append-only.
 
 ### Components
 
@@ -181,8 +173,7 @@ append-only.
 
 ### The interfaces
 
-Two families, kept apart on purpose. **`DATA-MODEL.md` is the full reference** — every class, its
-fields, the four states a value can be in, and which run file each one appears in.
+Two families, kept apart on purpose.
 
 **What the model may produce.** An effective date and a list of changes; each change has a kind and a
 list of fields. **Every value in the system is the same shape** — a name, what kind of thing it is, and
@@ -192,13 +183,12 @@ has no field in which to say "approved"** — which is the structural answer to 
 arriving in a freeform channel. It can become a proposal and nothing else.
 
 **What our code owns** — the request, its fields, the findings, the approvals, the plan and its
-steps. Every one is built *from* an extraction and never parsed out of a model response.
-
-The workflow `Field` deliberately breaks the model-facing rule, because a system with people in it
-has states a model never produces. An ambiguous "Sam" keeps its quote *and* gains a question. A value
-a person supplied has no quote at all, and records who supplied it. That is what lets the review
-packet say *"Sam → 10422 (answered by the HR partner) [message said "Sam"]"* instead of implying a
-person invented something the message actually stated.
+steps — is built *from* an extraction and never parsed out of a model response. Its version of a
+field is deliberately looser, because a system with people in it has states a model never produces:
+an ambiguous "Sam" keeps its quote *and* gains a question, and a value a person supplied has no
+quote at all and records who supplied it. That is what lets the packet say *"Sam → 10422 (answered
+by the HR partner) [message said "Sam"]"* rather than implying a person invented something the
+message stated.
 
 ### Where the human stays in the loop, and why there
 
@@ -210,12 +200,10 @@ approving the consequence instead of the cause, and a wrong request compiles int
 ordered wrong plan.
 
 Here, because the resolved request is the **smallest artifact that fully determines everything
-downstream**. It is small enough to check field by field against the evidence, and nothing has moved
-yet.
-
-**What the approver sees** — each value beside the words it came from; which values a person
-supplied rather than the message; what the checks found; which roles must approve. The pay figure is
-put back here and only here, because this is the only place someone is asked to approve it.
+downstream** — small enough to check field by field against the evidence, and nothing has moved yet.
+The approver sees each value beside the words it came from, which values a person supplied rather
+than the message, what the checks found, and which roles must approve. The pay figure is put back
+here and only here, because this is the only place someone is asked to approve it.
 
 **Who approves** is derived from what the request contains. Splitting a cost center moves budget:
 Finance. Changing a band changes pay: Comp/HR. A single message asking for both needs both, and
@@ -274,10 +262,10 @@ provides.
 **Approve the plan instead of the request.** Rejected: that approves the consequence while the cause
 is still unchecked. Kept as an addition — a second gate before an irreversible step, designed.
 
-**Auto-approve "easy" reorgs above a confidence score.** Tempting; most reorgs are small and the gate
-feels heavy. Rejected: confidence is the model's opinion of itself, and the gate is what makes
-delegation safe. Kept as the twelve-month path — once there is real data on where errors actually
-occur, lighten the review by *measured* risk class, never by model confidence.
+**Auto-approve "easy" reorgs above a confidence score.** Rejected: confidence is the model's opinion
+of itself, and the gate is what makes delegation safe. Kept as the twelve-month path — once there is
+real data on where errors actually occur, lighten review by *measured* risk class, never by model
+confidence.
 
 ---
 
@@ -337,11 +325,10 @@ in the design and a direct consequence of its central choice.
 It is covered by tests that fail when a load-bearing dependency is removed. Every plan records the
 registry version it was compiled from, and compiling refuses if the registry moved after approval.
 
-*The test is worth one more sentence, because the obvious version of it does not work.* Deleting the
-edge that requires GL mapping before worker reassignment leaves the compiled order unchanged — the
-two step ids happen to sort that way — so a test that reads the finished order passes on a registry
-that now permits the exact error. The test therefore asks the registry whether the dependency exists,
-which no accident of ordering can satisfy.
+*The obvious version of that test does not work.* Deleting the edge leaves the compiled order
+unchanged — the two step ids happen to sort that way — so a test reading the finished order passes
+on a registry that now permits the exact error. The test asks the registry whether the dependency
+exists, which no accident of ordering can satisfy.
 
 **Handle.** Registry changes need owner approval; a plan compiled from a superseded version is
 refused; and the fix is one edit and one review, which corrects every future reorg at once. That is
