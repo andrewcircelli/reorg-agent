@@ -1,13 +1,13 @@
 """4. Resolver — mentions → canonical ids against reference/. Deterministic. Never the model.
 
-Contract: for each Field with entity_type in {worker, org, cost_center, req, band}:
-  exactly 1 match in scope  → resolved_id set
-  0 or >1 matches           → unresolved=True, candidates listed, question set
-  date                      → normalized to ISO (year inference: never in the past)
-
-TODO (Phase 3, simple): scope = source org ∪ destination org, exact/alias match on name.
-TODO (Phase 9, if time): widening circles team → source org → dest org → global; on many matches
-     ask for an identifier rather than listing them.
+Contract, per Field by entity_type:
+  worker       match on name across the whole directory; exactly 1 -> resolved_id;
+               0 or >1 -> unresolved, candidates listed, question asks for an employee ID
+  org          match on name or alias
+  cost_center  numeric id directly; otherwise an org alias inside the mention ("Infra cost center") -> that org's cost center
+  band         match against bands.json
+  date         normalize to ISO using SourceRecord.sent_at as the reference for the year
+  Anything already unresolved by the Extractor (no text) is left as is.
 """
 from __future__ import annotations
 

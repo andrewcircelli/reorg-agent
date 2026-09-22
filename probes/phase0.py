@@ -48,11 +48,12 @@ expect_error("both cited and unresolved", lambda: ExtractedField(
 # ---------------------------------------------------------------------------------------------
 section("3. Field names are frozen per change kind; missing required names are reported, not hidden")
 sam = ExtractedField(entity_type="worker", mention="Sam", source_span=[0, 3])
-expect_error("MANAGER_CHANGE with field 'boss'", lambda: ExtractedChange(kind=ChangeKind.MANAGER_CHANGE, fields={"boss": sam}))
+expect_error("COMP_CHANGE with field 'boss'", lambda: ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"boss": sam}))
 expect_error("worker field with entity_type org", lambda: ExtractedChange(
-    kind=ChangeKind.MANAGER_CHANGE, fields={"worker": ExtractedField(entity_type="org", mention="Sam", source_span=[0, 3])}))
-ch = ExtractedChange(kind=ChangeKind.MANAGER_CHANGE, fields={"worker": sam})
-print(f"  MANAGER_CHANGE with only 'worker'         accepted as a shape; missing_required → {missing_required(ch)}")
+    kind=ChangeKind.COMP_CHANGE, fields={"worker": ExtractedField(entity_type="org", mention="Sam", source_span=[0, 3])}))
+expect_error("TEAM_MOVE (planned, not built)", lambda: ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields={}))
+ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": sam})
+print(f"  COMP_CHANGE with only 'worker'            accepted as a shape; missing_required → {missing_required(ch)}")
 
 # ---------------------------------------------------------------------------------------------
 section("4. Model output → workflow state: application code mints id + DRAFT; fingerprint binds to content")

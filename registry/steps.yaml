@@ -4,11 +4,16 @@
 # reviewed like code. Adding a system or a rule is an edit here, not an edit to an agent prompt.
 #
 # Each step: id · system · applies_to (change kinds that trigger it) · actuator (api | human_keyed)
-#            · requires (must complete first) · deadline · verify (query run after the step)
+#            · requires (must complete first) · deadline · verify (check run after the step)
 #
-# ⚠ The edge  hris.reassign_workers.requires: finance.map_gl  is the one that prevents the
-#   "cost posts to a cost center with no GL mapping, surfaces weeks later" error.
-#   tests/test_registry.py fails on purpose if it is removed.
+# ⚠ The edge  hris.reassign_workers.requires: finance.map_gl  prevents the error the problem
+#   statement describes: cost posting to a cost center with no GL mapping, found weeks later at close.
+#   tests/test_registry.py detects its removal.
+#
+# Supported kinds: COST_CENTER_SPLIT, COMP_CHANGE.
+# Extension (planned kinds, not built): TEAM_MOVE adds hris.move_supervisory_org and a planning-tool
+# headcount step; MANAGER_CHANGE adds hris.change_manager; COST_CENTER_MERGE adds
+# finance.close_old_cost_center. Each is an entry here plus a field spec in reorg/contracts.py.
 
 version: 1
 
@@ -30,67 +35,27 @@ steps:
     verify: gl_mapping_exists(target_cc)
     description: Map the new cost center to GL accounts (mirror the source cost center's mapping).
 
-  - id: hris.move_supervisory_org
-    system: hris
-    applies_to: [TEAM_MOVE]
-    actuator: api
-    requires: []
-    verify: org_parent(org) == to_org
-    description: Re-parent the supervisory org under its new leader.
-
   - id: hris.reassign_workers
     system: hris
-    applies_to: [TEAM_MOVE, COST_CENTER_SPLIT]
+    applies_to: [COST_CENTER_SPLIT]
     actuator: api
-    requires: [finance.create_cost_center, finance.map_gl, hris.move_supervisory_org]
-    verify: all(worker.cost_center == target_cc for worker in org)
-    description: Move each worker's cost-center assignment, effective on the effective date.
+    requires: [finance.create_cost_center, finance.map_gl]
+    verify: all(worker.cost_center == target_cc for worker in team)
+    description: Move each worker on the team to the new cost center, effective on the effective date.
 
-  - id: hris.change_manager
-    system: hris
-    applies_to: [MANAGER_CHANGE]
+  - id: finance.update_reporting_hierarchy
+    system: finance
+    applies_to: [COST_CENTER_SPLIT]
     actuator: api
-    requires: [hris.move_supervisory_org]
-    verify: manager_of(worker) == new_manager
-    description: Change a worker's manager.
+    requires: [finance.map_gl]
+    deadline: before_period_close(effective_date)
+    verify: rollup_parent(target_cc) == rollup_parent(source_cc)
+    description: Add the new cost center to the consolidation rollup so period reports reflect the split.
 
   - id: hris.update_comp
     system: hris
     applies_to: [COMP_CHANGE]
     actuator: api
-    requires: [hris.change_manager]
+    requires: []
     verify: band_of(worker) == new_band
     description: Apply the band / comp change. Requires comp_hr approval (Validator R_REQUIRED_ROLES).
-
-  - id: planning.move_headcount
-    system: planning
-    applies_to: [TEAM_MOVE, HEADCOUNT_SHIFT]
-    actuator: api
-    requires: [hris.reassign_workers, finance.create_cost_center]
-    verify: plan_headcount(target_cc) == count(org.workers)
-    description: Move filled headcount in the planning tool to the new cost center.
-
-  - id: planning.move_open_reqs
-    system: planning
-    applies_to: [HEADCOUNT_SHIFT]
-    actuator: api
-    requires: [planning.move_headcount]
-    verify: all(req.cost_center == funding_cc for req in reqs)
-    description: Move open reqs; funding cost center may differ from destination for a period.
-
-  - id: finance.update_reporting_hierarchy
-    system: finance
-    applies_to: [TEAM_MOVE, COST_CENTER_SPLIT]
-    actuator: api
-    requires: [finance.map_gl]
-    deadline: before_period_close(effective_date)
-    verify: rollup_parent(target_cc) == to_org.rollup
-    description: Update the consolidation / reporting rollup so period reports reflect the move.
-
-  - id: finance.close_old_cost_center
-    system: finance
-    applies_to: [COST_CENTER_MERGE]
-    actuator: api
-    requires: [hris.reassign_workers, planning.move_open_reqs, finance.update_reporting_hierarchy]
-    verify: open_postings(source_cc) == 0 and open_reqs(source_cc) == 0
-    description: Only on merge. Cannot close until nothing in-flight references the old cost center.

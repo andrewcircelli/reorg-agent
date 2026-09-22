@@ -1,13 +1,12 @@
 {
-  "_what": "The ANSWER KEY. Written by Andrew from Jordan's message BEFORE the model runs. Phase 2 diffs the model's output against this. Not shown in the demo; it is how we know the extractor is correct.",
-  "_how": "For each field write the exact words as `mention` (make check1 fills in source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: see contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
+  "_what": "The ANSWER KEY. Written from Jordan's message BEFORE the model runs. Phase 2 diffs the model's output against this. Not shown in the demo; it is how we know the extractor is correct.",
+  "_how": "For each field: the exact words as `mention` (make check1 fills source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
   "_settled_semantics": {
-    "population": "TEAM_MOVE moves every worker in org_data_platform (7, Priya included). '6 eng' is a claim the Validator checks, not the population.",
-    "open_reqs": "one HEADCOUNT_SHIFT with open_reqs {mention:'2 open reqs', quantity:2}.",
-    "funding": "funding_cc = the words for Infra's budget; funding_until = 'end of Q4'. After Q4 is NOT stated -> not extracted.",
-    "dates": "'Oct 1' as written. Year is inferred later from SourceRecord.sent_at.",
-    "target_cc": "no words for it -> unresolved + question. Never invented.",
-    "sam": "mention 'Sam' only. Identity is the Resolver's job."
+    "target_cc": "The message says the team 'gets its own' cost center but never names or numbers it -> unresolved + question. Never invented.",
+    "team": "The team that moves onto the new cost center. Who is on it comes from reference data (the Resolver/adapter), not from the message.",
+    "sam": "mention 'Sam' only, no team or org context in the message. The Resolver searches the whole directory; more than one match -> unresolved, ask for an employee ID.",
+    "comp": "new_comp is the token [COMP_1] as it appears after redaction; the model never sees the figure. new_band is 'L5'.",
+    "dates": "'Oct 1' as written. Year is inferred later from SourceRecord.sent_at, never from the machine clock."
   },
   "effective_date": {
     "entity_type": "date",
@@ -19,87 +18,59 @@
   },
   "changes": [
     {
-      "_example": "WORKED EXAMPLE \u2014 change [1] done for you. The other four follow the same shape.",
-      "kind": "TEAM_MOVE",
-      "fields": {
-        "team": {
-          "entity_type": "org",
-          "mention": "Priya's Data Platform team",
-          "source_span": [
-            28,
-            54
-          ]
-        },
-        "from_org": {
-          "entity_type": "org",
-          "mention": "Infra",
-          "source_span": [
-            92,
-            97
-          ]
-        },
-        "from_leader": {
-          "entity_type": "worker",
-          "mention": "Marcus",
-          "source_span": [
-            104,
-            110
-          ]
-        },
-        "to_org": {
-          "entity_type": "org",
-          "mention": "Product Eng",
-          "source_span": [
-            119,
-            130
-          ]
-        },
-        "to_leader": {
-          "entity_type": "worker",
-          "mention": "Dana",
-          "source_span": [
-            137,
-            141
-          ]
-        }
-      }
-    },
-    {
-      "_todo": "[2] COST_CENTER_SPLIT \u2014 source_cc: which words? target_cc: is there any text naming it? (see _settled_semantics.target_cc)",
       "kind": "COST_CENTER_SPLIT",
       "fields": {
         "source_cc": {
           "entity_type": "cost_center",
-          "mention": "Priya's Data Platform team",
+          "mention": "Infra cost center",
           "source_span": [
-            28,
-            54
+            48,
+            65
           ]
         },
         "target_cc": {
           "entity_type": "cost_center",
+          "unresolved": true,
+          "question": "What is the new cost center?"
+        },
+        "team": {
+          "entity_type": "org",
           "mention": "Priya's Data Platform team",
           "source_span": [
-            28,
-            54
+            69,
+            95
           ]
         }
       }
     },
     {
-      "_todo": "[3] HEADCOUNT_SHIFT \u2014 team, open_reqs (with quantity), funding_cc, funding_until. 'open reqs' appears twice: which occurrence is the headcount claim? (add \"occurrence\": 2 if the second)",
-      "kind": "HEADCOUNT_SHIFT",
-      "fields": {}
-    },
-    {
-      "_todo": "[4] MANAGER_CHANGE \u2014 worker: 'Sam' (occurrence 1), new_manager: which 'Priya'? (occurrence?)",
-      "kind": "MANAGER_CHANGE",
-      "fields": {}
-    },
-    {
-      "_todo": "[5] COMP_CHANGE \u2014 worker: 'Sam' (occurrence 2), new_band, new_comp: the token exactly as it appears in the redacted text",
       "kind": "COMP_CHANGE",
-      "fields": {}
+      "fields": {
+        "worker": {
+          "entity_type": "worker",
+          "mention": "Sam",
+          "source_span": [
+            130,
+            133
+          ]
+        },
+        "new_band": {
+          "entity_type": "band",
+          "mention": "L5",
+          "source_span": [
+            141,
+            143
+          ]
+        },
+        "new_comp": {
+          "entity_type": "text",
+          "mention": "[COMP_1]",
+          "source_span": [
+            152,
+            160
+          ]
+        }
+      }
     }
   ]
 }

@@ -31,35 +31,31 @@ def now_iso() -> str:
 
 
 class ChangeKind(str, Enum):
-    TEAM_MOVE = "TEAM_MOVE"
-    COST_CENTER_SPLIT = "COST_CENTER_SPLIT"
-    COST_CENTER_MERGE = "COST_CENTER_MERGE"
-    MANAGER_CHANGE = "MANAGER_CHANGE"
-    HEADCOUNT_SHIFT = "HEADCOUNT_SHIFT"
-    COMP_CHANGE = "COMP_CHANGE"
+    """Every change type the design recognizes. Only SUPPORTED_KINDS are built in this prototype;
+    the rest are the extension roadmap. Adding one = add its field spec below, its steps in
+    registry/steps.yaml, its rules in validate.py, and a line in the extraction prompt."""
+    COST_CENTER_SPLIT = "COST_CENTER_SPLIT"   # supported
+    COMP_CHANGE = "COMP_CHANGE"               # supported
+    TEAM_MOVE = "TEAM_MOVE"                   # planned
+    MANAGER_CHANGE = "MANAGER_CHANGE"         # planned
+    COST_CENTER_MERGE = "COST_CENTER_MERGE"   # planned
+    HEADCOUNT_SHIFT = "HEADCOUNT_SHIFT"       # planned (open reqs move with a team; funding-exception semantics need a policy owner)
 
 
-EntityType = Literal["worker", "org", "cost_center", "req", "band", "date", "text"]
+SUPPORTED_KINDS = {ChangeKind.COST_CENTER_SPLIT, ChangeKind.COMP_CHANGE}
 
-# Frozen field names per change kind (approved 9/21). Unknown names fail closed; missing required
-# names are a BLOCKING finding (R_REQUIRED_FIELDS). Extend here, then in the prompt — never the reverse.
+EntityType = Literal["worker", "org", "cost_center", "band", "date", "text"]
+
+# Frozen field names per SUPPORTED change kind. Unknown names fail closed; missing required names are a
+# BLOCKING finding (R_REQUIRED_FIELDS). Extend here, then in the prompt — never the reverse.
 REQUIRED_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
-    ChangeKind.TEAM_MOVE:         {"team": "org"},                       # plus to_org OR to_leader (checked below)
-    ChangeKind.COST_CENTER_SPLIT: {"source_cc": "cost_center", "target_cc": "cost_center"},
-    ChangeKind.COST_CENTER_MERGE: {"source_cc": "cost_center", "target_cc": "cost_center"},
-    ChangeKind.MANAGER_CHANGE:    {"worker": "worker", "new_manager": "worker"},
-    ChangeKind.HEADCOUNT_SHIFT:   {"team": "org", "open_reqs": "req"},
+    ChangeKind.COST_CENTER_SPLIT: {"source_cc": "cost_center", "target_cc": "cost_center", "team": "org"},
     ChangeKind.COMP_CHANGE:       {"worker": "worker", "new_band": "band"},
 }
 OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
-    ChangeKind.TEAM_MOVE:         {"to_org": "org", "to_leader": "worker", "from_org": "org", "from_leader": "worker"},
     ChangeKind.COST_CENTER_SPLIT: {},
-    ChangeKind.COST_CENTER_MERGE: {},
-    ChangeKind.MANAGER_CHANGE:    {},
-    ChangeKind.HEADCOUNT_SHIFT:   {"funding_cc": "cost_center", "funding_until": "date"},
     ChangeKind.COMP_CHANGE:       {"new_comp": "text"},
 }
-EITHER_OF: dict[ChangeKind, tuple[str, ...]] = {ChangeKind.TEAM_MOVE: ("to_org", "to_leader")}
 
 
 # =====================================================================================
@@ -73,7 +69,6 @@ class ExtractedField(BaseModel):
     entity_type: EntityType
     mention: Optional[str] = None
     source_span: Optional[list[int]] = None      # [start, end) into RedactedText.text
-    quantity: Optional[int] = None               # for counted mentions: "2 open reqs"
     unresolved: bool = False
     question: Optional[str] = None
 
@@ -93,8 +88,6 @@ class ExtractedField(BaseModel):
             s, e = self.source_span
             if not (isinstance(s, int) and isinstance(e, int) and 0 <= s < e):
                 raise ValueError("source_span must satisfy 0 <= start < end")
-        if self.quantity is not None and self.quantity < 0:
-            raise ValueError("quantity must be >= 0")
         return self
 
 
@@ -107,6 +100,9 @@ class ExtractedChange(BaseModel):
 
     @model_validator(mode="after")
     def _known_names_and_types(self):
+        if self.kind not in SUPPORTED_KINDS:
+            raise ValueError(f"{self.kind.value} is not supported in this version "
+                             f"(supported: {sorted(k.value for k in SUPPORTED_KINDS)})")
         allowed = {**REQUIRED_FIELDS[self.kind], **OPTIONAL_FIELDS[self.kind]}
         for name, f in self.fields.items():
             if name not in allowed:
@@ -144,11 +140,7 @@ def validate_spans(result: ExtractionResult, text: str) -> None:
 
 def missing_required(change: "Change | ExtractedChange") -> list[str]:
     """Required names absent from a change. A present change with these missing cannot become READY."""
-    missing = [n for n in REQUIRED_FIELDS[change.kind] if n not in change.fields]
-    either = EITHER_OF.get(change.kind)
-    if either and not any(n in change.fields for n in either):
-        missing.append(" | ".join(either))
-    return missing
+    return [n for n in REQUIRED_FIELDS[change.kind] if n not in change.fields]
 
 
 # =====================================================================================
@@ -176,7 +168,6 @@ class Field(ExtractedField):
     model_config = ConfigDict(extra="forbid")
 
     resolved_id: Optional[str] = None
-    resolved_ids: Optional[list[str]] = None     # group entities (open reqs)
     candidates: Optional[list[str]] = None       # set by the Resolver on ambiguity
 
 

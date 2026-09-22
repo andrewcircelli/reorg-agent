@@ -12,7 +12,7 @@ demo:
 	$(PY) -m reorg.cli intake   fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
 	$(PY) -m reorg.cli validate $(RUN)
 	-$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
-	$(PY) -m reorg.cli validate $(RUN) --resolve 4.worker=10422 --resolve 2.target_cc=4410
+	$(PY) -m reorg.cli validate $(RUN) --resolve 2.worker=10422 --resolve 1.target_cc=4410
 	$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
 	$(PY) -m reorg.cli compile  $(RUN)
 

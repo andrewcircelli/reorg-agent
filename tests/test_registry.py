@@ -38,7 +38,7 @@ def jordan_intent():
 
 def test_registry_loads():
     steps, version = compile_mod.load_registry(REG)
-    assert len(steps) >= 8 and len(version) == 64
+    assert len(steps) >= 5 and len(version) == 64
 
 
 def test_gl_mapping_precedes_worker_reassignment(jordan_intent):

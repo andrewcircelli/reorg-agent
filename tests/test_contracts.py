@@ -28,10 +28,10 @@ def _property_names(schema, acc=None):
 
 def test_model_schema_has_no_workflow_state():
     names = _property_names(ExtractionResult.model_json_schema())
-    for forbidden in ("status", "resolved_id", "resolved_ids", "candidates", "source_id", "id"):
+    for forbidden in ("status", "resolved_id", "candidates", "source_id", "id"):
         assert forbidden not in names, f"model-facing schema must not carry '{forbidden}'"
     assert names == {"changes", "effective_date", "entity_type", "fields", "kind", "mention",
-                     "notes", "quantity", "question", "source_span", "unresolved"}
+                     "notes", "question", "source_span", "unresolved"}
 
 
 @pytest.mark.parametrize("kwargs", [
@@ -49,22 +49,27 @@ def test_malformed_fields_fail_closed(kwargs):
 
 def test_unresolved_and_cited_shapes_are_valid():
     ExtractedField(entity_type="cost_center", unresolved=True, question="Split into which cost center?")
-    cited("req", "2 open reqs", (10, 21), quantity=2)
+    cited("band", "L5", (10, 12))
 
 
 def test_unknown_field_name_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.MANAGER_CHANGE, fields={"boss": cited()})
+        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"boss": cited()})
 
 
 def test_wrong_entity_type_for_field_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.MANAGER_CHANGE, fields={"worker": cited(t="org")})
+        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": cited(t="org")})
+
+
+def test_unsupported_kind_is_rejected_loudly():
+    with pytest.raises(ValidationError, match="not supported in this version"):
+        ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields={})
 
 
 def test_missing_required_is_detected_not_silent():
-    ch = ExtractedChange(kind=ChangeKind.TEAM_MOVE, fields={"team": cited("org", "Data Platform", (0, 13))})
-    assert missing_required(ch) == ["to_org | to_leader"]
+    ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields={"worker": cited()})
+    assert missing_required(ch) == ["new_band"]
 
 
 def test_span_beyond_text_fails_closed():
