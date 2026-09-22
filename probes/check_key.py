@@ -1,4 +1,4 @@
-"""Phase 1 check — run: make check1
+"""Run: make check-key
 
 Reads fixtures/intent_expected.json, RECOMPUTES every source_span from its mention (first
 occurrence in the redacted text unless "occurrence": N is given), writes the completed file back,

@@ -1,4 +1,7 @@
-anthropic
-pydantic
-pyyaml
-pytest
+# Pinned to the versions this was built and tested against. A submission someone runs weeks
+# later should get the same behaviour, and the extraction depends on specific SDK behaviour
+# (messages.parse with output_format, and resp.parsed_output).
+anthropic==1.7.0
+pydantic==2.13.5
+pytest==9.1.1
+PyYAML==6.0.3

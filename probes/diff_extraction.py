@@ -1,5 +1,6 @@
-"""Phase 2 — run: make phase2 [LIVE=1]
-Diffs runs/phase2/03_extraction.json (what the model produced) against fixtures/intent_expected.json."""
+"""Run: make extract [LIVE=1]
+Compares runs/extract/03_extraction.json (what the model produced) against the answer key in
+fixtures/intent_expected.json, field by field."""
 import json
 import sys
 
@@ -13,7 +14,7 @@ def load_expected():
     return ExtractionResult.model_validate(strip(raw))
 
 
-run = sys.argv[1] if len(sys.argv) > 1 else "runs/phase2"
+run = sys.argv[1] if len(sys.argv) > 1 else "runs/extract"
 expected = load_expected()
 actual = ExtractionResult.model_validate(json.load(open(f"{run}/03_extraction.json")))
 meta = json.load(open(f"{run}/03_model_meta.json"))

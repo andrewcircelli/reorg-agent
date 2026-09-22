@@ -48,8 +48,8 @@ reasoning before it writes.
 No confidence score. A number the model makes up about its own reliability is not evidence, and
 treating it as if it were is the failure this whole system is built to avoid.
 
-To check the instructions, run `make phase2`, which compares a real answer against the key field by
-field.
+To check the instructions, run `make extract`, which compares a real answer against the key field
+by field.
 """
 from __future__ import annotations
 

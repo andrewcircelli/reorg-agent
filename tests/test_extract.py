@@ -1,5 +1,5 @@
 """The extraction regression test: the recorded real model output must match the hand-written key.
-Skips until `make phase2 LIVE=1` has produced a recording."""
+Skips until `make extract LIVE=1` has produced a recording."""
 import json
 from pathlib import Path
 
@@ -19,7 +19,7 @@ def _expected():
 
 def test_recorded_extraction_matches_answer_key():
     if not any(Path("fixtures/recorded").glob("*.json")):
-        pytest.skip("no recording yet — run: make phase2 LIVE=1")
+        pytest.skip("no recording yet — run: make extract LIVE=1")
     red, _ = redact.redact(intake.capture("fixtures/msg_jordan.txt"))
     try:
         actual, _ = extract.extract(red, ReplayClient())

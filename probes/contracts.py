@@ -1,4 +1,4 @@
-"""Phase 0 probes — run: make probe0
+"""Run: make contracts
 Each section shows one contract working, then shows it refusing. Read the error text; that IS the rule."""
 from pydantic import ValidationError
 

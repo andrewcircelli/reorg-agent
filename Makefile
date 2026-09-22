@@ -1,26 +1,35 @@
 PY := .venv/bin/python
+PYTHON ?= python3
 RUN := runs/demo
 
-.PHONY: help setup demo test clean redacted probe0 check1 phase2
+.PHONY: help setup demo test clean redacted contracts check-key extract guard
 .DEFAULT_GOAL := help
 
-# The list is derived from the `## ` comments below, so it cannot drift out of date the way a
-# hand-maintained block would (the same reasoning as binding a recording to its schema).
-help:  ## Show this list
-	@echo 'reorg-agent — make <target>   (add LIVE=1 for a real model call)'
-	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN{FS=":.*?## "}{printf "  %-10s %s\n", $$1, $$2}'
+# The listing below is built from the `###` and `## ` comments in this file, so it cannot drift
+# out of date the way a hand-written block would.
+help:
+	@echo ''
+	@echo 'reorg-agent —  make <target>'
+	@echo ''
+	@awk 'BEGIN{FS=":.*?## "} \
+		/^### /{printf "\n%s\n", substr($$0,5)} \
+		/^[a-zA-Z0-9_-]+:.*?## /{printf "  %-11s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ''
+	@echo 'Everything runs without an API key by replaying a recorded real response.'
+	@echo 'Add LIVE=1 to extract or demo to make a real call instead (needs .env).'
+	@echo ''
 
-setup:  ## Create .venv and install requirements
-	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+# Fails early with something readable, instead of "no such file or directory".
+guard:
+	@test -x $(PY) || { echo 'No virtualenv here yet. Run:  make setup'; exit 1; }
 
-phase2:  ## Extract the fixture message and diff against the answer key (LIVE=1 calls the model and re-records)
-	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/phase2 $(if $(LIVE),--live --record,)
-	PYTHONPATH=. $(PY) probes/phase2_diff.py runs/phase2
+### Show the system working
 
-# Full demo arc. Keyless by default (replay of a recorded real model response).
-# LIVE=1 makes the real call (needs ANTHROPIC_API_KEY in .env).
-demo:  ## The whole arc: intake -> validate -> refused approval -> resolve -> approve -> compile
+extract: guard  ## The main beat: read the message, then check the result against the answer key
+	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/extract $(if $(LIVE),--live --record,)
+	PYTHONPATH=. $(PY) probes/diff_extraction.py runs/extract
+
+demo: guard  ## The whole arc, capture through approval to a compiled plan
 	$(PY) -m reorg.cli intake   fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
 	$(PY) -m reorg.cli validate $(RUN)
 	-$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
@@ -28,17 +37,27 @@ demo:  ## The whole arc: intake -> validate -> refused approval -> resolve -> ap
 	$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
 	$(PY) -m reorg.cli compile  $(RUN)
 
-test:  ## Run the test suite
+contracts: guard  ## Show the rules refusing bad model output. Run this if asked what stops a bad answer
+	PYTHONPATH=. $(PY) probes/contracts.py
+
+### While building
+
+test: guard  ## Run the test suite
 	$(PY) -m pytest -q
 
-check1:  ## Validate the answer key and show every span beside the words it quotes
-	PYTHONPATH=. $(PY) probes/phase1_check.py
+check-key: guard  ## Re-check the answer key after editing it. Fills in each quote's location
+	PYTHONPATH=. $(PY) probes/check_key.py
 
-probe0:  ## Show the contracts accepting valid shapes and refusing bad ones
-	PYTHONPATH=. $(PY) probes/phase0.py
-
-redacted:  ## Print the redacted message with character offsets
+redacted: guard  ## Print the message as the model sees it, with character positions
 	$(PY) -c "from reorg import intake, redact; r,_=redact.redact(intake.capture(\"fixtures/msg_jordan.txt\")); t=r.text; print(t); print(); [print(f\"{i:4} {t[i:i+40]!r}\") for i in range(0,len(t),40)]"
 
+### Setting up
+
+setup:  ## Create .venv and install the pinned requirements. Run this first, on any machine
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' \
+		|| { echo 'Python 3.10 or newer is required; found' "$$($(PYTHON) --version 2>&1)"; exit 1; }
+	$(PYTHON) -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+	@echo 'Ready. Try:  make extract'
+
 clean:  ## Delete generated run directories
-	rm -rf runs/demo runs/phase2
+	rm -rf runs/demo runs/extract
