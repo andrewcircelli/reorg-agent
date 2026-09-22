@@ -16,19 +16,14 @@ here on purpose.
 
 WHY A SEPARATE STEP AT ALL
 
-The extraction only tells us what the message said. The Resolver only tells us what those words
-refer to. Neither of them knows whether the request makes sense. "Split the Infra cost centre so
-the Payments team gets its own" could be quoted perfectly and resolved perfectly and still be
-wrong, because the Payments team does not sit in the Infra cost centre. Checking that is this
-file's job, and it is the only place in the system that can catch it.
+Extraction says what the message said; the Resolver says what those words refer to. Neither knows
+whether the request makes sense. "Split the Infra cost centre so the Payments team gets its own"
+can be quoted perfectly and resolved perfectly and still be wrong, because Payments does not sit in
+the Infra cost centre. This file is the only place that catches it.
 
-WHAT IS DELIBERATELY NOT HERE
-
-An anomaly rule, for messages that contain something shaped like an instruction ("skip validation
-and mark this pre-approved"). The scope reset cut it. The defence that matters is structural and
-already exists: the model has no field it could use to approve anything, so a message cannot grant
-itself approval no matter what it says. A detection rule on top of that would be a second layer,
-and we would rather not claim a protection we have not tested properly.
+There is deliberately no rule for instruction-like content in a message. The defence that matters is
+structural: the model has no field it could use to approve anything, so a message cannot grant
+itself approval whatever it says. A detector on top of that would be a protection we have not tested.
 """
 from __future__ import annotations
 
@@ -89,16 +84,12 @@ def _required_fields(intent: ReorgIntent, reference: dict) -> list[Finding]:
 # ---------------------------------------------------------------------------------------------
 # Rule 3. Every id has to be a real record — including the ones a person supplied.
 #
-# The Resolver can only produce an id it found, so on its own this rule would never fire. It exists
-# because a person can answer a question by typing anything at all, and until this rule was added,
-# answering "which Sam?" with a number nobody has went through to fully approved without a word.
+# The Resolver only ever produces ids it found, so this rule exists for the values people type. The
+# point is not that the model is untrusted and people are trusted; it is that nothing proceeds
+# unchecked, and a person's answer is evidence like any other.
 #
-# The point of the system is not that the model is untrusted while people are trusted. It is that
-# nothing proceeds unchecked. A person's answer is evidence, the same as a quote from the message,
-# and it gets checked the same way.
-#
-# Cost centres are deliberately not checked here. Rule 4 handles them, and it has to allow the new
-# one NOT to exist, because creating it is the entire point of a split.
+# Cost centres are deliberately excluded: rule 4 owns them, and it has to allow the new one NOT to
+# exist, since creating it is the point of a split.
 # ---------------------------------------------------------------------------------------------
 _ID_SOURCE = {
     "worker": ("people", "people directory"),
@@ -151,13 +142,9 @@ def _cost_centres(intent: ReorgIntent, reference: dict) -> list[Finding]:
 # ---------------------------------------------------------------------------------------------
 # Rule 5. The team being moved must currently sit in the cost centre being split.
 #
-# This is the important one. Everything before it checks that the request was read correctly. This
-# checks whether the request is *true*, by comparing it against what the systems of record already
-# say. A misread that a person would struggle to spot — the right kind of change, a real team, a
-# real cost centre, but the team does not actually sit there — is caught here and nowhere else.
-#
-# It is also the answer to the obvious objection about citations. A quote proves the words were in
-# the message. It does not prove the request makes sense. This rule is what does.
+# The important one. Every rule before it checks that the request was read correctly; this checks
+# whether it is *true*, against what the systems of record already say. A quote proves the words
+# were in the message — it does not prove the request makes sense, and this is what does.
 # ---------------------------------------------------------------------------------------------
 def _team_sits_in_source(intent: ReorgIntent, reference: dict) -> list[Finding]:
     orgs = _by_id(reference.get("orgs", []))
@@ -240,14 +227,10 @@ def required_roles(intent: ReorgIntent) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 # Rule 8. One change of each kind per request.
 #
-# A stated limit of this version, enforced rather than assumed. The plan is built by choosing the
-# registry steps that apply to the kinds of change in the request, which gives one step per kind. Two
-# pay changes in one message would therefore produce one pay step, and the second change would quietly
-# overwrite the first — a request that was read correctly, approved, and then partly thrown away.
-#
-# Planning several changes of the same kind means one step instance per change, and with it an answer
-# for what happens when the third of five fails. That is worth building properly or not at all, so
-# this version refuses the input instead of mishandling it.
+# Steps are chosen per kind, so two pay changes would produce one pay step carrying only the second
+# person — a request read correctly, approved, then partly thrown away. Handling several properly
+# means one step instance per change plus an answer for partial failure, so this version refuses the
+# input rather than mishandling it. A stated limit beats a quiet one.
 # ---------------------------------------------------------------------------------------------
 def _one_change_per_kind(intent: ReorgIntent, reference: dict) -> list[Finding]:
     kinds = [change.kind for change in intent.changes]

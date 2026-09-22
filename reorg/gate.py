@@ -12,22 +12,15 @@ THREE RULES, AND EACH ONE IS A DIFFERENT KIND OF NO
      cannot sign it off. This is an ordinary finance control, usually called segregation of duties.
   3. Every role the request needs must approve, and all of them must approve THE SAME CONTENT.
 
-WHAT "THE SAME CONTENT" MEANS, AND WHY IT IS THE INTERESTING PART
+WHAT "THE SAME CONTENT" MEANS
 
-An approval is stored with three hashes: the content of the request, the reference data it was
-checked against, and the step registry a plan would be built from. A plan does not follow from the
-request alone — it also depends on what the directory said and what the registry said at the time.
+An approval stores three hashes: the request, the reference data it was checked against, and the
+step registry. A plan depends on all three, so an approval is a statement about a situation rather
+than a general blessing. Change any of them and earlier approvals stop applying — they are kept as
+history, not deleted, and the request needs approving again.
 
-So an approval is a statement about a specific situation, not a general blessing. Change one word
-of the request and its hash changes, and the earlier approvals no longer match it. They are not
-deleted; they simply stop applying, and the request needs approving again. The same goes for the
-reference data and the registry.
-
-WHAT IS SIMULATED
-
-The approver is whatever name is typed on the command line, `--as finance-approver`. There is no
-login and no identity provider, and the design says so plainly rather than implying otherwise.
-What is being demonstrated is where the boundary sits and what it binds to, not authentication.
+The approver is whatever name is typed on the command line. There is no login and no identity
+provider; what is demonstrated is where the boundary sits and what it binds to, not authentication.
 """
 from __future__ import annotations
 
@@ -71,12 +64,9 @@ def outstanding_roles(intent: ReorgIntent, approvals: list[Approval],
                       registry_version: str, reference_sha256: str) -> list[str]:
     """Which roles still have to approve the situation we are in.
 
-    Every part of the system asks this one question, so that "approved" means the same thing to the
-    review packet, to the approve command and to the compiler. It used to mean two different things:
-    the packet counted approvals matching the content, and the compiler separately refused if ANY
-    approval in the file named older reference data. Once reference data changed, re-approving could
-    not clear it — the stale entries were still there — and the request could never be compiled
-    again. Counting only what applies now is what makes recovery possible."""
+    The packet, the approve command and the compiler all ask this, so that "approved" means one
+    thing. Counting only the approvals that apply now is also what makes recovery possible: stale
+    entries stay in the file, stop counting, and re-approving clears the way."""
     signed = {a.role for a in current_approvals(intent, approvals, registry_version, reference_sha256)}
     return [role for role in required_roles(intent) if role not in signed]
 

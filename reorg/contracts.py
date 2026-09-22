@@ -6,8 +6,7 @@ to disk as JSON in runs/<id>/. That folder is the audit trail.
 HOW TO READ THIS FILE
 
 It is long, but most of the length is lists of field names on simple containers. SourceRecord,
-RedactedText, Finding, Approval, StepDef, StepInstance, Plan, HumanTask and DryRunReport are just
-bags of data. There is nothing to explain in them beyond the names.
+RedactedText, Finding, Approval, StepDef, StepInstance, Plan and HumanTask are just bags of data. There is nothing to explain in them beyond the names.
 
 The real content is five decisions:
 
@@ -118,12 +117,9 @@ OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
 # =====================================================================================
 # MODEL-FACING — the only thing the model can produce
 # =====================================================================================
-# Rule 2 from the top of the file, in code. Both of the classes below call this from their
-# validator, which pydantic runs automatically every time one of them is created or loaded from
-# JSON. If it raises, the object does not get created at all.
-#
-# It is a plain function rather than a shared parent class so that each class can list its own
-# fields in the order we want the model to fill them in. See the comment above NamedExtractedField.
+# Rule 2 from the top of the file. Both field classes call this from their validator, which pydantic
+# runs on every object it builds; if it raises, the object is never created. A plain function rather
+# than a shared parent class, so each class controls its own field order.
 def _cited_xor_unresolved(f: ExtractedField | NamedExtractedField):
     """Either the field quotes the message, or it asks a question. Never both, never neither."""
     cited = f.mention is not None or f.source_span is not None
@@ -166,32 +162,15 @@ class ExtractedField(BaseModel):
         return _cited_xor_unresolved(self)
 
 
-# Two things about this class are worth knowing, because both were learned the hard way.
+# Two constraints, both enforced by tests, both easy to undo by accident.
 #
-# FIRST: the six fields below are copied from ExtractedField above, on purpose, instead of
-# inheriting them.
+# `name` must stay FIRST. The model fills an object in field order, so it has to say which field it
+# is answering before it produces the evidence for it. That is why these six fields are copied from
+# ExtractedField rather than inherited: inheritance puts an added field last. (test_field_name_comes_first)
 #
-# The model writes its answer one field at a time, in the order the fields appear here. So `name`
-# has to come first. That way the model states which field it is answering before it has to produce
-# the words and the location for it. The first time we made a real call, `name` was last, and the
-# answer fell apart: we got back entries that had a name and nothing else, and one of the names had
-# a stray comma inside it.
-#
-# Inheriting from ExtractedField would put `name` last again. There is a way to inherit and still
-# get `name` first, but it depends on a subtle rule about how Python orders inherited attributes,
-# and explaining it took a paragraph. Copying six lines is easier to read. The test
-# test_field_name_comes_first fails if the order is ever changed back.
-#
-# SECOND: a change holds a LIST of these, rather than a dictionary that maps a field name to its
-# value, which would be the more natural way to write it in Python.
-#
-# The reason is a limit in how the model is constrained. We send the model a description of the
-# shape of answer we will accept. That description has no way to say "an object whose key names the
-# model picks at runtime". When we tried, the library quietly rewrote it into "an object that is
-# allowed no contents at all", which would have forced the model to return an empty answer for
-# every field. We caught it before the first real call.
-#
-# So each entry carries its own name, and our code builds the dictionary afterwards, in by_name().
+# A change holds a LIST of these rather than a name → field dictionary, because the schema sent to
+# the model cannot describe an object whose keys the model chooses; it silently becomes an object
+# that permits nothing. by_name() builds the dictionary afterwards. (tests/test_extraction_schema.py)
 class NamedExtractedField(BaseModel):
     """One field of a change: which field it is, then either the words that state it or the
     question that would settle it."""
@@ -259,18 +238,13 @@ class ExtractionResult(BaseModel):
 def validate_citations(result: ExtractionResult, text: str) -> None:
     """Check that every quote really is a quote.
 
-    Each quoted value comes with a location: a start and end position in the message. This checks
-    two things about it. The location has to be inside the message, and the words sitting at that
-    location have to be exactly the words the model claims to have quoted.
+    Two checks per cited value: the location is inside the message, and the words at that location
+    are exactly the words claimed. The second is the one that matters — a location that fits but
+    points at the wrong words still looks properly sourced, and a reviewer comparing the value
+    against it would be comparing the model's claim against itself.
 
-    The second check is the one that matters. Without it the model could hand us a location that is
-    inside the message but points at the wrong words. The value would still look properly sourced.
-    A reviewer told to compare the value against the message would really be comparing the model's
-    claim against the model's own claim, which proves nothing.
-
-    All problems are collected and reported together, so one run tells you everything that is wrong
-    instead of making you fix them one at a time. If anything is wrong, nothing is returned: the
-    caller gets an error rather than a result with a bad quote in it."""
+    All problems are reported together, and if anything is wrong the caller gets an error rather
+    than a result containing a bad quote."""
     n = len(text)
     problems: list[str] = []
 
@@ -416,7 +390,6 @@ class Severity(str, Enum):
     BLOCKING = "BLOCKING"
     WARNING = "WARNING"
     INFO = "INFO"
-    ANOMALY = "ANOMALY"
 
 
 class Finding(BaseModel):
@@ -442,7 +415,6 @@ class StepDef(BaseModel):
     applies_to: list[ChangeKind]
     actuator: Literal["api", "human_keyed"]
     requires: list[str] = PField(default_factory=list)       # ordering among steps IN THIS PLAN
-    preconditions: list[str] = PField(default_factory=list)  # facts that must already be true (Phase 4)
     deadline: Optional[str] = None
     verify: Optional[str] = None
     description: Optional[str] = None
@@ -474,8 +446,3 @@ class HumanTask(BaseModel):
     verify: str
     due: Optional[str] = None
 
-
-class DryRunReport(BaseModel):
-    plan_sha256: str
-    diffs: dict[str, str]
-    human_tasks: list[HumanTask]

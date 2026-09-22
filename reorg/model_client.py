@@ -1,29 +1,26 @@
 """Everything that talks to the AI model, kept in one file.
 
-The rest of the project never calls the model directly. It asks for a ModelClient and uses that.
-Swapping this file for a client that calls Coinbase's own gateway would not change anything else.
+The rest of the project never calls the model directly; it asks for a ModelClient. Swapping this
+file for one that calls Coinbase's own gateway would change nothing else.
 
-There are two of them.
+LiveClient makes a real call, sending the message, the instructions, and a description of the shape
+of answer we accept, so the model is forced to reply in that shape.
 
-LiveClient makes a real call. It sends the message, the instructions, and a description of the
-shape of answer we accept, so the model is forced to reply in that shape.
-
-Getting a reply back is not the same as getting an extraction. Three things can come back instead,
-and each one raises an error rather than being passed along as a half-filled result:
+Getting a reply is not the same as getting an extraction. Three things can come back instead, and
+each raises rather than being passed on as a half-filled result:
 
     the model declined to answer;
     the answer was cut off before it finished;
     the answer arrived but broke one of our rules, so the contract threw it out.
 
-The third case hands back the model's own words, which is what makes the instructions fixable. See
+The third hands back the model's own words, which is what makes the instructions fixable; see
 ExtractionRejected for why the first two arrive the same way.
 
-ReplayClient returns a real answer that was recorded earlier, so the demo and the tests run with no
-API key and no network. It is a recording of a genuine call, never a hand-written answer.
-
-A recording is filed under a key made from three things: the message, the instructions, and the
-shape we asked for. Change any of them and there is no recording under the new key, so replay
-stops and says to re-record. It can never quietly answer a question it was not asked.
+ReplayClient returns a real answer recorded earlier, so the demo and the tests run with no API key
+and no network. It is a recording of a genuine call, never a hand-written answer. The recording is
+filed under a key made from the message, the instructions and the shape asked for — change any of
+them and there is no recording, so replay stops and says to re-record rather than quietly answering
+a question it was not asked.
 """
 
 from __future__ import annotations
@@ -56,14 +53,9 @@ def _load_dotenv() -> None:
 def recording_key(system: str, user: str) -> str:
     """Build the filename a recording is stored under.
 
-    The key covers the instructions and the message, which is obvious, and also a hash of the
-    shape we asked the model for, which is less obvious and was added after this went wrong.
-
-    SCHEMA_VERSION above is a label a person types. It stayed at "extraction-v1" through two real
-    changes to the shape in a single afternoon: a dictionary became a list, and then the field
-    order changed. Had replay relied on that label, it would have handed back an answer produced
-    under a shape that no longer exists, and the test would have passed. Hashing the shape itself
-    removes the need for anyone to remember."""
+    Covers the instructions, the message, and — less obviously — a hash of the shape we asked for.
+    SCHEMA_VERSION above is a label a person types and therefore forgets; hashing the schema itself
+    means a recording cannot survive a change to the shape it was produced under."""
     return sha256_of(f"{SCHEMA_VERSION}\n{SCHEMA_SHA256}\n{system}\n{user}")[:16]
 
 
@@ -89,14 +81,9 @@ class LiveClient:
                 output_format=ExtractionResult,
             )
         except ValidationError as e:
-            # We land here whenever the reply is not something our contract accepts.
-            #
-            # That covers more than a broken answer. The library checks the reply against our
-            # classes inside the call above, so a refusal (plain prose) and a cut-off answer (half
-            # a sentence of JSON) both fail here as "that is not valid JSON" before the
-            # stop_reason checks further down ever get to run.
-            #
-            # The error carries the text the model actually sent, so we can see what happened.
+            # Any reply the contract does not accept lands here — including a refusal (prose) and a
+            # cut-off answer (half a sentence of JSON), both of which fail as invalid JSON inside
+            # the library's own check, before the stop_reason tests below can run.
             raise ExtractionRejected.from_validation_error(e) from e
         if resp.stop_reason == "refusal":
             raise ExtractionUnavailable(
@@ -143,13 +130,10 @@ class ExtractionRejected(ExtractionUnavailable):
     def from_validation_error(cls, e: ValidationError) -> ExtractionRejected:
         """Turn the library's validation error into a readable one.
 
-        The library checks the reply against our classes inside the call itself, so when the reply
-        breaks a rule we never get a response object to inspect. What we get is a validation error.
-
-        That error is more useful than it looks: it carries the value that failed. When the model
-        returned prose instead of an answer, that value is the whole reply. When the answer was cut
-        off, it is the partial text. When a single field broke a rule, it is that field. So the
-        message below can always show what the model actually said, not just which rule it broke."""
+        The check happens inside the call, so a broken reply never becomes a response object we can
+        inspect — but the validation error carries the value that failed: the whole reply for prose
+        or a truncation, the offending field otherwise. So the message can always show what the
+        model actually said, not just which rule it broke."""
         lines = [
             f"{'.'.join(str(p) for p in err['loc']) or '(whole response)'}: {err['msg']}\n"
             f"      model sent: {err['input']!r}"[:600]

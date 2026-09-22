@@ -10,20 +10,13 @@ the values it would act on, in an order a person can read and argue with.
 
 WHY THE ORDER IS THE POINT
 
-The problem this system exists for is not that someone forgets a step. It is that steps happen in
-the wrong order and nothing complains until the month closes. Move workers into a cost centre that
-has no GL mapping yet and their costs post to nothing; that surfaces weeks later in a report, by
-which time several other things have been built on top of it.
+The failure this system exists for is not a forgotten step; it is steps done in the wrong order,
+with nothing complaining until the month closes. Move workers into a cost centre with no GL mapping
+and their costs post to nothing. So the registry records `requires`, this file will not contradict
+it, and tests/test_registry.py makes sure the load-bearing edge cannot be deleted quietly.
 
-So the registry records `requires`, and this file will not produce a plan that contradicts it.
-`hris.reassign_workers` requires `finance.map_gl`, and tests/test_registry.py exists to make sure
-that edge cannot be deleted quietly.
-
-STEPS RUN ONE AFTER ANOTHER
-
-The Plan contract has room for parallel waves, and we use it to hold a single step each. Running
-things side by side would need a story about what happens when one half fails, and this prototype
-has nothing to say about that yet. Serial ordering demonstrates the dependency argument on its own.
+Steps run one after another. The Plan contract has room for parallel waves and holds one step in
+each: running things side by side needs an answer for what happens when one half fails.
 """
 from __future__ import annotations
 
