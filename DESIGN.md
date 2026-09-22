@@ -13,11 +13,10 @@ it running.
 
 ## Summary
 
-**Today.** A leader decides. The HR business partner hears about it in a Slack message written in
-prose, opens three systems, and works out what is true from a runbook last updated by someone who has
-left — plus a private checklist of what has to happen and, more importantly, in what order. Each
-hand-off is another message. Everything looks done. Then payroll posts, the new cost center has no GL
-mapping, and the cost lands somewhere it should not. Nobody notices until close.
+**Today.** The HR business partner learns of a decision in a Slack message, opens three systems, and
+works out the order from a stale runbook plus a private checklist. Everything looks done. Then
+payroll posts, the new cost center has no GL mapping, and the cost lands somewhere it should not.
+Nobody notices until close.
 
 **What this builds.** Not an agent that "does reorgs". Two things the current process is missing:
 
@@ -26,10 +25,9 @@ mapping, and the cost lands somewhere it should not. Nobody notices until close.
 2. **A capture step that turns a sentence into a checkable proposal** — every value quoted from the
    message it came from, or raised as a question, so a human can verify rather than trust.
 
-**The outcome it produces.** A reorg request becomes an approved, dependency-ordered plan, with the
-evidence for every value attached and the approvals bound to exactly what was approved. The class of
-error the problem statement names — wrong order, discovered weeks later at close — stops being a
-matter of who is in the room, because the order is computed from a file rather than recalled.
+**The outcome.** A request becomes an approved, dependency-ordered plan, the evidence for every value
+attached and the approvals bound to exactly what was approved. Wrong order stops being a matter of
+who is in the room.
 
 **The thesis, in one line: nothing moves on the model's say-so.** The model turns unstructured text
 into a proposal with evidence. A human approves the proposal. Everything after approval is
@@ -79,21 +77,18 @@ queue — and the file written between each stage is the seam those attach to.
 
 ### Limits of this version, stated plainly
 
-One change kind, `COST_CENTER_SPLIT`, and one change of it per request — refused rather than
-mishandled if more arrive. Compensation appears in the fixture message as sensitive *context*
-rather than as a request, which demonstrates the handling without a second change kind to carry.
-Simulated approver identity. Fixture reference data standing in for reads from the systems of
-record. And one fixture message, which is one test case rather than an accuracy claim.
-
-*Also worth stating: nothing in that message is ambiguous, so the Resolver is seen resolving rather
-than declining. That it asks instead of guessing when a mention matches several records is real and
-tested, but it is described here rather than shown on screen.*
-
-The message's **sender, channel and date are stubbed too**, since the fixture is a text file and the
-channel connectors are not built — in production they come from the event itself. Worth naming
-because two design properties read them: the year for a date like "Oct 1" comes from when the message
-was sent rather than from today's clock, and the gate refuses an approver who is the person who sent
-the message. Both behave correctly; both are currently fed a constant.
+- **One change kind**, `COST_CENTER_SPLIT`, and one change of it per request — refused rather than
+  mishandled if more arrive. Compensation appears in the fixture message as sensitive *context*
+  rather than a request, which demonstrates the handling without a second change kind to carry.
+- **The Resolver is seen resolving, not declining.** Nothing in the fixture message is ambiguous.
+  That it asks instead of guessing when a mention matches several records is real and tested, but
+  described here rather than shown on screen.
+- **Sender, channel and date are stubbed**, since the fixture is a text file and channel connectors
+  are not built; in production they come from the event. Two design properties read them — the year
+  for "Oct 1", and the refusal of an approver who is the person who sent the message. Both behave
+  correctly; both are currently fed a constant.
+- **Simulated approver identity, fixture reference data, one fixture message** — one test case,
+  not an accuracy claim.
 
 ---
 
@@ -131,18 +126,17 @@ many agents it contains. Six, of which the prototype exercises five:
 | Building block | Where | Built |
 |---|---|---|
 | The model can only answer in a fixed shape | the Extractor's only output path | ✔ |
-| A boundary the model cannot cross | the gate is not callable by the model, and the model's shape has no approval field | ✔ |
+| A boundary the model cannot cross | the gate is not callable by the model (see *The interfaces*) | ✔ |
 | Every value carries its evidence | the words it came from, so reviewers check rather than trust | ✔ |
 | Ordinary code around the model | Resolver, Validator, Compiler | ✔ |
 | Planning metadata for safe retries and verification | every step carries a stable key and the check that ought to run after it | **metadata only.** Neither is exercised: nothing runs a step, so nothing retries one or verifies it. A stable key is a precondition for safe retry, not evidence of it — whether a system honours it is a property of that system |
 | "I don't know" goes to a person | designed: the Exception Agent's only permitted answer to a result it cannot classify | designed |
 
-What is deliberately absent is **a model deciding what happens next**. The second model placement in
-the design sits exactly where the same rule puts it: the Exception Agent reads unexpected API
-responses during execution and escalates anything it cannot classify — a judgment call, with a
-person as the fallback, in a path that does not exist yet.
+The same rule places the design's second model call, the one not built: the Exception Agent reads
+unexpected API responses during execution and escalates anything it cannot classify — a judgment
+call, with a person as the fallback.
 
-This is also the answer to "not one-off scripts that only their authors can run": the business
+It is also the answer to "not one-off scripts that only their authors can run": the business
 knowledge lives in a file with an owner and a review process, not in a prompt and not in a script.
 
 ### The flow — capture → validation → propagation
@@ -171,7 +165,7 @@ not tamper-proof; hashes do not make a folder append-only.
 | 3 | **Extractor** ★ | model | Redacted text → `ExtractionResult`. Every field is cited or explicitly unresolved, never both and never neither. Every citation must **quote**: the span lies inside the message and the words there equal the mention, character for character. Extracts *mentions*, not identities. |
 | 4 | **Resolver** | code | Mentions → canonical ids. One match resolves; zero or more than one becomes a question. Reference data carries only what an export carries — ids, names, codes, structure — and is never extended to make a match succeed. |
 | 5 | **Validator** | code | Seven rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Info: which roles must approve. |
-| 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text. A redacted figure is **not** put back: approving a cost center split does not require one. |
+| 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text, and binds each approval to what was approved. |
 | 7 | **Step Registry** | data | `steps.yaml`: id, system, which changes it applies to, what it requires, whether a person or an API does it, its timing rule, and how it is verified. **This is the source of truth the problem statement says does not exist.** Adding a system is an edit a controller reviews. |
 | 8 | **Plan Compiler** | code | Picks the steps this request needs and puts them in an order where nothing runs before what it depends on. Refuses a loop, or a prerequisite the request does not include. Steps run one after another. Same request, same plan, every time. |
 | 8b | **Task cards** | code | For steps no system can do: who, with which approved values, what must be true afterwards, and how that would be confirmed — written down as a requirement, not performed here. |
@@ -209,11 +203,10 @@ downstream** — small enough to check field by field against the evidence, and 
 The approver sees each value beside the words it came from, which values a person supplied rather
 than the message, what the checks found, and which roles must approve.
 
-**A redacted figure is not put back.** The salary in the fixture message is removed before the model
-reads it, and approving a cost center split does not require knowing anyone's pay — so it is taken
-out once and never restored, the packet included. If a change kind ever arrives whose approval turns
-on a figure, putting it back becomes a question worth answering: for a named role, in this one
-place, and nowhere else.
+**A redacted figure is not put back** — the packet included, since approving a cost center split does
+not require knowing anyone's pay. If a change kind ever arrives whose approval turns on a figure,
+restoring it becomes a question worth answering: for a named role, in this one place, and nowhere
+else.
 
 **Who approves** is derived from what the request contains. Splitting a cost center moves budget:
 Finance. The rule is **per change kind, not per request** — this version supports one kind and so
@@ -237,46 +230,40 @@ execution out of scope.
 
 ## Alternatives considered
 
-**Let the agent decide the order at runtime.** The "agentic" answer, and flexible. Rejected: the
-order has an exact answer, working it out per run means it can differ per run, a controller cannot
-review a plan that does not exist until execution, and the failure is silent — which is the error
-class this system exists to remove. Kept: the model for the one step with no exact answer.
+Four that were close enough to argue about. Each is a real option; what follows is the tradeoff I
+took, not a flaw in the alternative.
 
-**Make HR submit a form.** Deletes the model entirely. Rejected: the constraint is explicit, changes
-arrive as freeform text — and a form is a template, which is the "varying states of accuracy" problem
-in a new costume. Kept: a form is a fine *additional* channel into Intake.
+**Let an agent decide the order at runtime.** The flexible answer, and it adapts to cases the
+registry has not met. Worth saying plainly: **an agent can have an enforced approval gate**, and a
+reviewer can be shown a proposed plan before it runs — nothing about agentic execution forces you to
+give up control. What I traded away was repeatability. The order has an exact answer, so deriving it
+per run buys adaptability at the cost of a plan that can differ between runs of the same request,
+leaving a controller nothing stable to diff against last month's. With a feedback loop of one
+accounting period, a difference nobody spots is a difference nobody corrects. *Kept:* the model where
+there is no exact answer, plus a designed Exception Agent for the runtime judgment that does exist.
 
-**One agent, end to end — read the message, call the systems.** Simplest to build. Rejected: it
-turns the gate into a prompt instruction ("ask before you act"), leaves no artifact to approve, and
-makes the blast radius everything. Kept: nothing. This is the anti-pattern the design is arranged
-against.
+**Search the existing runbooks to derive the steps.** The knowledge already exists and retrieval is
+cheap. But the assignment states those runbooks are in varying states of accuracy, and similarity
+search returns the most *similar* one rather than the correct one, with no signal saying which you
+got. Step dependencies are exact facts with an owner — written once and reviewed, not re-derived per
+run from documents nobody trusts. *Kept:* the runbooks as input to **authoring** the registry, once,
+with the people who hold the checklist. That conversation is the real work; the registry is its
+output.
 
-**Multi-agent — an Extractor agent, a Validator agent, an Executor agent.** Clean separation, and
-the shape the role description names. Rejected for the Validator and Compiler: an agent doing an
-exact task adds unpredictability without adding capability, and nobody reviews the Validator's
-output, so it must not be able to be creative. Kept: the **boundaries** — the components are split
-exactly as a multi-agent design would split them. One is a model, one more would be, the rest are
-tools. *Agents where there is judgment to exercise; tools where there is not.*
+**Low-code orchestration (n8n or similar).** The assignment offers it, it is genuinely platform-first,
+and it removes a codebase someone has to maintain. A node graph can express these contracts and
+ordering rules. The question is what a controller reviews: the thing they most need to check is
+"does the registry still require GL mapping before workers move?", which is a question about data and
+answers better as a diff than as a canvas. *Kept:* it is a legitimate **runtime** for the channel
+connectors and routing, and nothing here stands in the way of that.
 
-**Search the existing runbooks to derive the steps.** They exist, and retrieval is cheap. Rejected:
-the runbooks are stated to be inaccurate, similarity search returns the most *similar* runbook rather
-than the correct one, and step dependencies are exact facts that should be written down once and
-reviewed. Kept: the runbooks as input to *authoring* the registry, once, with the people who hold the
-checklist. That is the field work; the registry is its output.
-
-**Low-code orchestration (n8n or similar).** Offered by the assignment, and reads platform-first.
-Rejected for the prototype: the judgment lives in the contracts and the compiler, which a node graph
-can express but a controller cannot review. Kept as a legitimate *runtime* for connectors and
-routing. The contracts do not depend on any one vendor; the runtime is whatever the platform
-provides.
-
-**Approve the plan instead of the request.** Rejected: that approves the consequence while the cause
-is still unchecked. Kept as an addition — a second gate before an irreversible step, designed.
-
-**Auto-approve "easy" reorgs above a confidence score.** Rejected: confidence is the model's opinion
-of itself, and the gate is what makes delegation safe. Kept as the twelve-month path — once there is
-real data on where errors actually occur, lighten review by *measured* risk class, never by model
-confidence.
+**Tier the review by risk instead of gating every request.** Most reorgs are small, and asking a
+controller to approve a routine single-team split every time is how a control becomes a rubber stamp.
+The problem is timing: the only risk signal available today would be the model's confidence, which is
+its opinion of itself rather than evidence about the request. *Kept as the twelve-month path, with
+the order reversed:* gate everything, collect data on where errors actually occur, then lighten
+review for **measured** low-risk classes. Reconciliation is what produces that data, which is one
+reason it is the highest-value thing to build next.
 
 ---
 
@@ -302,10 +289,9 @@ than against the model's account of it. After execution: reconciliation (designe
 bound to that exact request, so the remedy is a new request, a new approval and a compensating plan —
 never a silent edit.
 
-There is deliberately no confidence score anywhere in the design. A number the model reports about
-itself is not evidence, and **the model being wrong is an expected input to this system rather than a
-failure of it** — which is why correctness comes from the quote, the directory, the rules and the
-gate instead.
+**The model being wrong is an expected input to this system rather than a failure of it** — which is
+why there is no confidence score anywhere in it, and why correctness comes from the quote, the
+directory, the rules and the gate instead.
 
 ### R2 — Partial propagation
 

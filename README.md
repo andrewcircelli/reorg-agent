@@ -15,7 +15,7 @@ see [Limitations](#limitations-read-this-part) and `DESIGN.md` for why that line
 ```bash
 make setup     # creates .venv, installs pinned requirements (needs Python 3.10+)
 make demo      # the whole arc, no API key needed
-make test      # 104 tests
+make test      # 105 tests
 ```
 
 `make demo` needs no API key. It replays a **real** model response recorded earlier — a genuine
@@ -107,9 +107,8 @@ request needs approving again. Approving also requires that the findings were pr
 Finance is the only approval role this version has, because it supports one change kind. How that
 generalises is in `DESIGN.md`.
 
-Open `runs/demo/06_packet.md` here. **The salary does not appear in it.** It was removed before the
-model, and approving a cost center split does not require knowing anyone's pay, so it is never put
-back.
+Open `runs/demo/06_packet.md` here — this is what an approver actually reads, and **the salary does
+not appear in it.**
 
 **6. Compile the plan.** The order comes from `registry/steps.yaml`, not from anyone's memory.
 
@@ -131,13 +130,9 @@ completion *would* be confirmed — stated as a requirement, and explicitly not 
 ### The test that carries the argument
 
 `hris.reassign_workers` requires `finance.map_gl`. Delete that edge and workers can be moved into a
-cost center with no GL mapping — the error that surfaces weeks later at close.
-
-The interesting part is that **the obvious test does not catch it.** Deleting the edge leaves the
-compiled order unchanged, because `finance.map_gl` happens to sort before `hris.reassign_workers`.
-So the test asks the **registry** whether GL mapping is required first, which no accident of sorting
-can satisfy. `test_an_ordering_check_alone_would_not_have_caught_it` asserts the lucky ordering, so
-the trap stays written down.
+cost center with no GL mapping — the error that surfaces weeks later at close. The obvious test does
+not catch it, which is why `tests/test_registry.py` asks the registry rather than the compiled
+order. `DESIGN.md` R3 explains why that distinction is the whole argument.
 
 ---
 
