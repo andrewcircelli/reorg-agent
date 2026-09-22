@@ -136,7 +136,7 @@ next one reads.
 
 | # | File | What it decides |
 |---|---|---|
-| 0 | `reorg/contracts.py` | the shapes everything else passes around. Its header lists the five decisions in it — start here |
+| 0 | `reorg/contracts.py` | the shapes everything else passes around. Its header lists the five decisions in it — start here, with `DATA-MODEL.md` open beside it |
 | 1 | `reorg/intake.py` | capture the message unchanged |
 | 2 | `reorg/redact.py` | replace pay figures before the model sees anything |
 | 3 | `reorg/extract.py` | the one model call. The header walks each paragraph of the prompt as a decision |

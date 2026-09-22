@@ -181,7 +181,8 @@ append-only.
 
 ### The interfaces
 
-Two families, kept apart on purpose.
+Two families, kept apart on purpose. **`DATA-MODEL.md` is the full reference** — every class, its
+fields, the four states a value can be in, and which run file each one appears in.
 
 **What the model may produce.** An effective date and a list of changes; each change has a kind and a
 list of fields. **Every value in the system is the same shape** — a name, what kind of thing it is, and
