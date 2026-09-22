@@ -1,7 +1,20 @@
-"""Registry tests — including the one that fails on purpose when the load-bearing edge is removed.
+"""The registry, and the one edge in it that the whole problem statement is about.
 
-This is risk R3 (a wrong registry is worse than a wrong person) made into a test.
-Red until Phase 4 builds the compiler.
+Move workers into a cost centre before anyone has mapped it to GL accounts and their costs post to
+nothing. Nobody notices until the month closes. The registry prevents that by recording that
+`hris.reassign_workers` requires `finance.map_gl`, and these tests exist so that line cannot be
+deleted without something going red.
+
+Two separate checks, deliberately:
+
+  1. Does the REGISTRY require GL mapping before worker reassignment? That is a question about the
+     dependency graph, and it is the one that matters.
+  2. Does the compiled plan respect what the registry declares?
+
+The first cannot be satisfied by luck. An order can put two steps in the right sequence by accident
+— and in fact this registry does exactly that, because "finance.map_gl" happens to sort before
+"hris.reassign_workers". A test that only looked at the finished order would still pass after the
+edge was deleted, and would be worthless. There is a test below that demonstrates precisely that.
 """
 import copy
 from pathlib import Path
@@ -10,59 +23,131 @@ import pytest
 import yaml
 
 from reorg import compile as compile_mod
-from reorg.contracts import StepDef
+from reorg.contracts import Field, StepDef
+from tests.test_validate import comp, intent, split
 
 REG = Path("registry/steps.yaml")
+GL, WORKERS = "finance.map_gl", "hris.reassign_workers"
 
 
-def _steps(doc):
+def steps_from(doc):
     return [StepDef.model_validate(s) for s in doc["steps"]]
 
 
-def _wave_of(steps, intent):
-    plan = compile_mod.compile_plan(intent, steps, version="test", reference_sha256="test")
-    return {s.step_id: i for i, w in enumerate(plan.waves) for s in w}
-
-
-def gl_precedes_workers(wave_of) -> bool:
-    """The safety invariant: GL mapping must complete in a strictly earlier wave than worker
-    reassignment. Same-wave is NOT safe regardless of list order."""
-    return wave_of["finance.map_gl"] < wave_of["hris.reassign_workers"]
+def without_the_edge():
+    broken = copy.deepcopy(yaml.safe_load(REG.read_text()))
+    for step in broken["steps"]:
+        if step["id"] == WORKERS:
+            step["requires"].remove(GL)
+    return steps_from(broken)
 
 
 @pytest.fixture
 def jordan_intent():
-    # A minimal approved intent covering the fixture's change kinds. Filled in Phase 4.
-    pytest.skip("Phase 4: build a minimal approved ReorgIntent fixture for the compiler")
+    """The fixture message's shape: a cost centre split and a pay change, both answered."""
+    return intent(split(), comp())
 
 
+@pytest.fixture
+def registry():
+    return compile_mod.load_registry(REG)[0]
+
+
+def plan_for(registry, an_intent):
+    return compile_mod.compile_plan(an_intent, registry, version="test", reference_sha256="test")
+
+
+def position(plan):
+    return {s.step_id: i for i, wave in enumerate(plan.waves) for s in wave}
+
+
+# ---- the registry itself -----------------------------------------------------------------------
 def test_registry_loads():
     steps, version = compile_mod.load_registry(REG)
     assert len(steps) >= 5 and len(version) == 64
 
 
-def test_gl_mapping_precedes_worker_reassignment(jordan_intent):
-    steps, _ = compile_mod.load_registry(REG)
-    assert gl_precedes_workers(_wave_of(steps, jordan_intent))
+def test_the_registry_requires_gl_mapping_before_moving_workers(registry):
+    """The safety requirement, asked of the dependency graph rather than of any plan."""
+    assert compile_mod.requires_path(registry, earlier=GL, later=WORKERS)
 
 
-def test_deleting_the_edge_produces_their_exact_bug(jordan_intent):
-    """Remove finance.map_gl from hris.reassign_workers.requires → workers land in a CC with no GL
-    mapping → the 'surfaces weeks later in a financial report' error. This test exists so that
-    edit cannot land silently."""
-    doc = yaml.safe_load(REG.read_text())
-    broken = copy.deepcopy(doc)
-    for s in broken["steps"]:
-        if s["id"] == "hris.reassign_workers":
-            s["requires"].remove("finance.map_gl")
-    # This test PASSES by demonstrating that the invariant detects the unsafe registry.
-    assert not gl_precedes_workers(_wave_of(_steps(broken), jordan_intent)), \
-        "expected the broken registry to violate the invariant — if it doesn't, the test isn't testing the edge"
+def test_deleting_that_edge_is_caught():
+    """Remove the requirement and the check above has to fail. This test passes by showing that
+    the unsafe registry is detected — it is not left broken to make a point."""
+    assert not compile_mod.requires_path(without_the_edge(), earlier=GL, later=WORKERS)
 
 
-def test_no_cycles_and_no_missing_dependencies():
-    steps, _ = compile_mod.load_registry(REG)
-    ids = {s.id for s in steps}
-    for s in steps:
-        for r in s.requires:
-            assert r in ids, f"{s.id} requires unknown step {r}"
+def test_an_ordering_check_alone_would_not_have_caught_it():
+    """Why the two checks are separate. With the edge deleted, the compiled order still happens to
+    put GL mapping first, because of how the ids sort. A test that only read the finished order
+    would pass on an unsafe registry."""
+    where = position(plan_for(without_the_edge(), intent(split(), comp())))
+    assert where[GL] < where[WORKERS]          # still "looks" right, and means nothing
+
+
+def test_every_requirement_in_the_registry_names_a_real_step(registry):
+    ids = {s.id for s in registry}
+    for step in registry:
+        for required in step.requires:
+            assert required in ids, f"{step.id} requires unknown step {required}"
+
+
+def test_a_registry_that_points_at_nothing_is_refused(tmp_path):
+    bad = tmp_path / "steps.yaml"
+    bad.write_text("version: 1\nsteps:\n"
+                   "  - {id: a, system: s, applies_to: [COMP_CHANGE], actuator: api, requires: [ghost]}\n")
+    with pytest.raises(compile_mod.RegistryError, match="does not exist"):
+        compile_mod.load_registry(bad)
+
+
+def test_steps_that_depend_on_each_other_in_a_loop_are_refused():
+    looping = [
+        StepDef(id="a", system="s", applies_to=["COMP_CHANGE"], actuator="api", requires=["b"]),
+        StepDef(id="b", system="s", applies_to=["COMP_CHANGE"], actuator="api", requires=["a"]),
+    ]
+    with pytest.raises(compile_mod.RegistryError, match="loop"):
+        compile_mod.order(looping)
+
+
+# ---- the compiled plan --------------------------------------------------------------------------
+def test_the_plan_respects_every_declared_dependency(registry, jordan_intent):
+    plan = plan_for(registry, jordan_intent)
+    where = position(plan)
+    for wave in plan.waves:
+        for step in wave:
+            for required in step.requires:
+                assert where[required] < where[step.step_id], \
+                    f"{step.step_id} runs before {required}, which it requires"
+
+
+def test_the_plan_only_contains_steps_this_request_needs(registry):
+    only_pay = plan_for(registry, intent(comp()))
+    assert {s.step_id for wave in only_pay.waves for s in wave} == {"hris.update_comp"}
+
+
+def test_the_same_request_always_produces_the_same_plan(registry, jordan_intent):
+    """Running the compiler twice gives an identical plan, not a second set of steps."""
+    first, second = plan_for(registry, jordan_intent), plan_for(registry, jordan_intent)
+    assert first.model_dump() == second.model_dump()
+
+
+def test_the_plan_never_carries_the_pay_figure(registry):
+    """The figure is hidden before the model sees it and is only put back in the review packet.
+    A plan is a working document that gets passed around, so it keeps the token."""
+    change = comp()
+    change.fields["new_comp"] = Field(entity_type="text", mention="[COMP_1]", source_span=[0, 8])
+    dumped = str(plan_for(registry, intent(change)).model_dump())
+    assert "[COMP_1]" in dumped and "215" not in dumped
+
+
+# ---- the step no system can do ------------------------------------------------------------------
+def test_the_step_with_no_api_becomes_a_task_for_a_person(registry, jordan_intent):
+    plan = plan_for(registry, jordan_intent)
+    tasks = compile_mod.human_tasks(plan, registry)
+    assert [t.step_id for t in tasks] == [GL]
+
+    card = compile_mod.render_task_cards(tasks)
+    assert "finance operations" in card
+    assert "4410" in card                                   # the values it has to be done with
+    assert "does not perform that check" in card            # what we are not claiming

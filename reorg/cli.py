@@ -139,16 +139,37 @@ def cmd_compile(a):
               f"(still required: {', '.join(still) or 'none, but status is ' + intent.status})")
         sys.exit(2)
     reg, version = compile_mod.load_registry(a.registry)
-    plan = compile_mod.compile_plan(intent, reg, version)
+    reference_sha256 = sha256_of(_reference())
+
+    # An approval named the registry and the reference data it was given against. If either has
+    # moved since, the approval is about a different situation and cannot carry this plan.
+    for approval in _approvals(run):
+        if approval.registry_version != version:
+            print(f"\n  REFUSED: the step registry has changed since {approval.role} approved. "
+                  f"Approved against {approval.registry_version[:12]}…, now {version[:12]}….")
+            sys.exit(2)
+        if approval.reference_sha256 != reference_sha256:
+            print(f"\n  REFUSED: the reference data has changed since {approval.role} approved. "
+                  f"Approved against {approval.reference_sha256[:12]}…, now {reference_sha256[:12]}….")
+            sys.exit(2)
+
+    plan = compile_mod.compile_plan(intent, reg, version, reference_sha256)
     _w(run, "08_plan.json", plan)
-    print(f"\nPLAN for intent {intent.id}  registry {version[:8]}  ({sum(len(w) for w in plan.waves)} steps, {len(plan.waves)} waves)")
+    tasks = compile_mod.human_tasks(plan, reg)
+    _w(run, "09_tasks.md", compile_mod.render_task_cards(tasks))
+
+    steps = sum(len(w) for w in plan.waves)
+    print(f"\nPLAN for {intent.id} — {steps} steps, in order, registry {version[:12]}…")
     for i, wave in enumerate(plan.waves, 1):
         for s in wave:
-            act = "HUMAN" if s.actuator == "human_keyed" else "api"
-            dl = f"  ⚠ deadline {s.deadline}" if s.deadline else ""
-            print(f"  wave {i}  {s.step_id:36} {act:5}{dl}")
+            who = "BY HAND" if s.actuator == "human_keyed" else "api"
+            after = f"  after {', '.join(s.requires)}" if s.requires else ""
+            print(f"  {i}. {s.step_id:36} {who:8}{after}")
     for w in plan.warnings:
-        print(f"  ⚠ {w}")
+        print(f"  note: {w}")
+    print(f"\n  Nothing has been executed. This is a plan for people and systems to carry out.")
+    if tasks:
+        print(f"  {len(tasks)} step(s) need a person — see {run}/09_tasks.md")
 
 
 def _apply_resolutions(intent: ReorgIntent, items: list[str], by: str = "human:jordan.hrbp") -> ReorgIntent:
