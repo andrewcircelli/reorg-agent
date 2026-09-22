@@ -10,7 +10,8 @@ from pathlib import Path
 
 from . import compile as compile_mod
 from . import extract, gate, intake, redact, resolve, validate
-from .contracts import Approval, Finding, ReorgIntent, SourceRecord, now_iso, sha256_of
+from .contracts import (Approval, Finding, ReorgIntent, Severity, SourceRecord, now_iso,
+                        sha256_of)
 from .model_client import LiveClient, ReplayClient, record
 
 
@@ -32,6 +33,25 @@ def _r(run: Path, name: str):
 
 
 REFERENCE_FILES = {"people", "orgs", "cost_centers", "bands"}
+
+
+def _next(*lines: str) -> None:
+    """Print what to do next.
+
+    Each command knows the state it just wrote, so it can say what follows rather than leaving the
+    reader to work it out or remember. The suggestions are derived from that state — the fields that
+    are actually unanswered, the roles that have actually not signed — so they stay true when the
+    request is not the fixture one."""
+    print("\n  next:")
+    for line in lines:
+        print(f"    {line}")
+
+
+def _unanswered_refs(intent: ReorgIntent) -> list[str]:
+    """`2.worker`, `1.target_cc` — the references --resolve takes, for the fields still open."""
+    return [f"{i}.{name}"
+            for i, change in enumerate(intent.changes, 1)
+            for name, field in change.fields.items() if field.unresolved]
 
 
 def _reference() -> dict:
@@ -83,6 +103,7 @@ def cmd_capture(a):
         print(f"  recorded model response → {p}")
     print(f"\nReorgIntent {intent.id}  ({'LIVE ' + meta.get('model', '') if a.live else 'replay'})")
     _print_intent(intent, red.text)
+    _next(f"python -m reorg.cli validate {run}    — look things up and check the rules")
 
 
 def cmd_validate(a):
@@ -106,6 +127,16 @@ def cmd_validate(a):
     for f in findings:
         print(f"  {f.severity.value:9} {f.rule_id:18} {f.message}")
     print(f"\n  status: {intent.status}")
+
+    open_fields = _unanswered_refs(intent)
+    if open_fields:
+        _next(f"{len(open_fields)} question(s) need an answer from a person. Re-run with:",
+              f"python -m reorg.cli validate {run} " + " ".join(f"--resolve {r}=<value>" for r in open_fields))
+    elif [f for f in findings if f.severity is Severity.BLOCKING]:
+        _next("blocking findings above have to be dealt with before this can be approved")
+    else:
+        still = gate.outstanding_roles(intent, _approvals(run), registry_version, reference_sha256)
+        _next(*[f"python -m reorg.cli approve {run} --as <your name> --role {role}" for role in still])
 
 
 def cmd_approve(a):
@@ -141,9 +172,11 @@ def cmd_approve(a):
           f"registry {appr.registry_version[:12]}…")
     if still:
         print(f"  NOT YET APPROVED — still required: {', '.join(still)}")
+        _next(*[f"python -m reorg.cli approve {run} --as <their name> --role {role}" for role in still])
     else:
         print(f"  APPROVED — every required role has signed the same content.")
         print("  Any edit changes that content hash, and these approvals stop applying.")
+        _next(f"python -m reorg.cli compile {run}    — turn it into an ordered plan")
 
 
 def cmd_compile(a):
