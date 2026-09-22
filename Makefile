@@ -32,9 +32,10 @@ extract: guard  ## The main beat: read the message, then check the result agains
 demo: guard  ## The whole arc, capture through approval to a compiled plan
 	$(PY) -m reorg.cli intake   fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
 	$(PY) -m reorg.cli validate $(RUN)
-	-$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
+	-$(PY) -m reorg.cli approve  $(RUN) --as dana.finance --role finance
 	$(PY) -m reorg.cli validate $(RUN) --resolve 2.worker=10422 --resolve 1.target_cc=4410
-	$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
+	$(PY) -m reorg.cli approve  $(RUN) --as dana.finance --role finance
+	$(PY) -m reorg.cli approve  $(RUN) --as raj.comp --role comp_hr
 	$(PY) -m reorg.cli compile  $(RUN)
 
 contracts: guard  ## Show the rules refusing bad model output. Run this if asked what stops a bad answer

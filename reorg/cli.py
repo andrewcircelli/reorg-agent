@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import compile as compile_mod
 from . import extract, gate, intake, redact, resolve, validate
-from .contracts import Finding, ReorgIntent, SourceRecord, now_iso
+from .contracts import Approval, Finding, ReorgIntent, SourceRecord, now_iso, sha256_of
 from .model_client import LiveClient, ReplayClient, record
 
 
@@ -31,11 +31,28 @@ def _r(run: Path, name: str):
     return json.loads((run / name).read_text())
 
 
+REFERENCE_FILES = {"people", "orgs", "cost_centers", "bands"}
+
+
 def _reference() -> dict:
-    ref = {}
-    for p in Path("reference").glob("*.json"):
-        ref[p.stem] = json.loads(p.read_text())
+    """Load reference/*.json, and stop clearly if it is not there.
+
+    Without this check a missing directory looks like a data problem rather than a setup problem:
+    every lookup would find nothing and the system would confidently report that no worker named
+    Sam exists. The usual cause is running from the wrong folder, since this path is relative."""
+    ref = {p.stem: json.loads(p.read_text()) for p in Path("reference").glob("*.json")}
+    missing = REFERENCE_FILES - ref.keys()
+    if missing:
+        raise SystemExit(f"reference data not found ({', '.join(sorted(missing))}). "
+                         f"Run from the project root, where the reference/ folder is.")
     return ref
+
+
+def _approvals(run: Path) -> list:
+    path = run / "07_approvals.json"
+    if not path.exists():
+        return []
+    return [Approval.model_validate(a) for a in json.loads(path.read_text())["approvals"]]
 
 
 def cmd_intake(a):
@@ -65,13 +82,13 @@ def cmd_validate(a):
         intent = _apply_resolutions(intent, a.resolve)
     ref = _reference()
     intent = resolve.resolve(intent, ref)
-    src = SourceRecord.model_validate(_r(run, "01_source.json"))
     red_text = _r(run, "02_redacted.json")["text"]      # spans index the REDACTED text
-    findings = validate.validate(intent, ref, red_text)
+    findings = validate.validate(intent, ref)
     intent.status = gate.status_for(findings)
     _w(run, "04_resolved.json", intent)
     _w(run, "05_findings.json", {"findings": [f.model_dump(mode="json") for f in findings]})
-    packet = gate.render_packet(intent, findings, red_text, _r(run, "02_redaction_map.local.json"))
+    packet = gate.render_packet(intent, findings, red_text,
+                                _r(run, "02_redaction_map.local.json"), _approvals(run))
     _w(run, "06_packet.md", packet)
     print()
     for f in findings:
@@ -80,28 +97,46 @@ def cmd_validate(a):
 
 
 def cmd_approve(a):
+    """One role approves. The request is only APPROVED once every required role has, and only
+    while they all approved the content it currently has."""
     run = Path(a.run)
     intent = ReorgIntent.model_validate(_r(run, "04_resolved.json"))
     findings = [Finding.model_validate(f) for f in _r(run, "05_findings.json")["findings"]]
     src = SourceRecord.model_validate(_r(run, "01_source.json"))
     try:
-        appr = gate.approve(intent, findings, src, approver=a.as_, role=a.role or a.as_)
-    except gate.GateRefused as e:   # defined in Phase 3
+        appr = gate.approve(intent, findings, src, approver=a.as_, role=a.role or a.as_,
+                            registry_version=compile_mod.registry_version(),
+                            reference_sha256=sha256_of(_reference()))
+    except gate.GateRefused as e:
         print(f"\n  REFUSED: {e}")
         sys.exit(2)
-    intent.status = "APPROVED"
+
+    approvals = _approvals(run) + [appr]
+    _w(run, "07_approvals.json", {"approvals": [x.model_dump(mode="json") for x in approvals]})
+    still = gate.outstanding_roles(intent, approvals)
+    intent.status = "READY" if still else "APPROVED"
     _w(run, "04_resolved.json", intent)
-    _w(run, "07_approval.json", appr)
-    print(f"\n  APPROVED intent={intent.id} sha256={appr.intent_sha256[:12]}… by={appr.approver} at={appr.ts}")
-    print("  binds to this exact intent. Any edit → approval void.")
+    red_text = _r(run, "02_redacted.json")["text"]
+    _w(run, "06_packet.md", gate.render_packet(intent, findings, red_text,
+                                               _r(run, "02_redaction_map.local.json"), approvals))
+
+    print(f"\n  recorded: {appr.role} approved by {appr.approver} at {appr.ts}")
+    print(f"  bound to content {appr.intent_sha256[:12]}…, reference {appr.reference_sha256[:12]}…, "
+          f"registry {appr.registry_version}")
+    if still:
+        print(f"  NOT YET APPROVED — still required: {', '.join(still)}")
+    else:
+        print(f"  APPROVED — every required role has signed the same content.")
+        print("  Any edit changes that content hash, and these approvals stop applying.")
 
 
 def cmd_compile(a):
     run = Path(a.run)
     intent = ReorgIntent.model_validate(_r(run, "04_resolved.json"))
-    appr = _r(run, "07_approval.json")
-    if intent.status != "APPROVED" or appr["intent_sha256"] != intent.fingerprint():
-        print("\n  REFUSED: intent is not approved as-is (fingerprint mismatch or not approved)")
+    still = gate.outstanding_roles(intent, _approvals(run))
+    if intent.status != "APPROVED" or still:
+        print(f"\n  REFUSED: not approved as it currently stands "
+              f"(still required: {', '.join(still) or 'none, but status is ' + intent.status})")
         sys.exit(2)
     reg, version = compile_mod.load_registry(a.registry)
     plan = compile_mod.compile_plan(intent, reg, version)
@@ -122,11 +157,20 @@ def _apply_resolutions(intent: ReorgIntent, items: list[str], by: str = "human:j
     The original evidence is kept as extracted; no span is invented for the supplied value.
     Production: a second SourceRecord with its own provenance."""
     for item in items:
-        ref, value = item.split("=", 1)
-        idx, name = ref.split(".", 1)
+        # Every mistake below used to be a stack trace. This is the command a person types during
+        # the demo, so a typo has to come back as a sentence.
+        ref, _, value = item.partition("=")
+        idx, _, name = ref.partition(".")
+        if not (name and value):
+            raise SystemExit(f"--resolve: expected CHANGE.FIELD=VALUE, got {item!r} "
+                             f"(for example: 1.target_cc=4410)")
+        if not idx.isdigit() or not 1 <= int(idx) <= len(intent.changes):
+            raise SystemExit(f"--resolve: {item!r} points at change {idx!r}, but this request has "
+                             f"{len(intent.changes)} change(s), numbered 1 to {len(intent.changes)}")
         ch = intent.changes[int(idx) - 1]
         if name not in ch.fields:
-            raise SystemExit(f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}'")
+            raise SystemExit(f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}' "
+                             f"(it has: {', '.join(ch.fields)})")
         ch.fields[name].supply(value, by)
     return intent
 

@@ -13,7 +13,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .contracts import Plan, ReorgIntent, StepDef
+from .contracts import Plan, ReorgIntent, StepDef, sha256_of
+
+
+def registry_version(path: str | Path = "registry/steps.yaml") -> str:
+    """A short hash of the step registry as it stands right now.
+
+    An approval records this, because a plan depends on the registry as well as on the request. If
+    someone edits the steps after approval, the recorded value no longer matches and the approval
+    stops applying to any plan built from the new steps."""
+    return sha256_of(Path(path).read_text())[:12]
 
 
 def load_registry(path: str | Path = "registry/steps.yaml") -> tuple[list[StepDef], str]:
