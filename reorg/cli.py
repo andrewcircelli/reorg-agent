@@ -135,7 +135,7 @@ def cmd_approve(a):
 
     print(f"\n  recorded: {appr.role} approved by {appr.approver} at {appr.ts}")
     print(f"  bound to content {appr.intent_sha256[:12]}…, reference {appr.reference_sha256[:12]}…, "
-          f"registry {appr.registry_version}")
+          f"registry {appr.registry_version[:12]}…")
     if still:
         print(f"  NOT YET APPROVED — still required: {', '.join(still)}")
     else:
