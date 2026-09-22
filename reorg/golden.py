@@ -13,11 +13,10 @@ phrased the way the key phrases it. Two reviewers would word it differently and 
 """
 from __future__ import annotations
 
-from .contracts import ExtractedField, ExtractionResult, NamedExtractedField
+from .contracts import ExtractedField, ExtractionResult
 
 
-def _field(label: str, exp: NamedExtractedField | ExtractedField,
-           got: NamedExtractedField | ExtractedField | None) -> list[str]:
+def _field(label: str, exp: ExtractedField, got: ExtractedField | None) -> list[str]:
     if got is None:
         return [f"{label}: missing"]
     if exp.unresolved != got.unresolved:

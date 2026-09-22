@@ -19,7 +19,7 @@ from reorg.contracts import ExtractionResult
 from reorg.model_client import (SCHEMA_SHA256, SCHEMA_VERSION, ExtractionRejected,
                                 ExtractionUnavailable, LiveClient, recording_key, sha256_of)
 
-GOOD = {"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]},
+GOOD = {"effective_date": {"name": "effective_date", "entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]},
         "changes": []}
 
 
@@ -50,7 +50,7 @@ def responds(**fields):
 
 # ---- the contract rejects the answer, and says what the model sent --------------------------------
 def test_contract_violation_is_reported_with_the_models_own_words():
-    payload = ('{"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0,5]},'
+    payload = ('{"effective_date": {"name": "effective_date", "entity_type": "date", "mention": "Oct 1", "source_span": [0,5]},'
                ' "changes": [{"kind": "COMP_CHANGE", "fields": [{"name": "worker", "entity_type":'
                ' "worker", "mention": "Sam", "source_span": [1,4], "unresolved": true,'
                ' "question": "which Sam?"}]}]}')

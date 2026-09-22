@@ -13,7 +13,7 @@ The real content is five decisions:
 1. There are two groups of classes, and they are kept apart on purpose.
 
    The first group is the only thing the AI model is allowed to send back: ExtractedField,
-   NamedExtractedField, ExtractedChange and ExtractionResult. None of them has an id, a status, or
+   ExtractedField, ExtractedChange and ExtractionResult. None of them has an id, a status, or
    a decision about who a name refers to. That is the point. Because those fields do not exist, a
    model response has no way to say "approved", even if the message it read tried to tell it to.
 
@@ -120,7 +120,7 @@ OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
 # Rule 2 from the top of the file. Both field classes call this from their validator, which pydantic
 # runs on every object it builds; if it raises, the object is never created. A plain function rather
 # than a shared parent class, so each class controls its own field order.
-def _cited_xor_unresolved(f: ExtractedField | NamedExtractedField):
+def _cited_xor_unresolved(f: ExtractedField):
     """Either the field quotes the message, or it asks a question. Never both, never neither."""
     cited = f.mention is not None or f.source_span is not None
     if f.unresolved:
@@ -139,41 +139,21 @@ def _cited_xor_unresolved(f: ExtractedField | NamedExtractedField):
     return f
 
 
-class ExtractedField(BaseModel):
-    """One value taken from the message. Either CITED — the words plus where they are — or
-    UNRESOLVED with the question a reviewer would have to answer. Never both, never neither. A
-    cited span must quote its mention exactly; it is checked against the text you were shown."""
-    model_config = ConfigDict(extra="forbid")
-
-    entity_type: EntityType = PField(description="what kind of thing this value is")
-    mention: Optional[str] = PField(
-        default=None, description="the exact words from the message, copied verbatim; null when unresolved")
-    source_span: Optional[list[int]] = PField(
-        default=None, description="[start, end) character offsets of `mention` in the message text, "
-                                  "counted from 0; null when unresolved")
-    unresolved: bool = PField(
-        default=False, description="true when the message does not state this value; then `question` "
-                                   "is required and `mention`/`source_span` must be null")
-    question: Optional[str] = PField(
-        default=None, description="what a reviewer must answer; required when unresolved, null otherwise")
-
-    @model_validator(mode="after")
-    def _one_shape(self):
-        return _cited_xor_unresolved(self)
-
-
 # Two constraints, both enforced by tests, both easy to undo by accident.
 #
 # `name` must stay FIRST. The model fills an object in field order, so it has to say which field it
-# is answering before it produces the evidence for it. That is why these six fields are copied from
-# ExtractedField rather than inherited: inheritance puts an added field last. (test_field_name_comes_first)
+# is answering before it produces the evidence for it.  (test_field_name_comes_first)
 #
 # A change holds a LIST of these rather than a name → field dictionary, because the schema sent to
 # the model cannot describe an object whose keys the model chooses; it silently becomes an object
 # that permits nothing. by_name() builds the dictionary afterwards. (tests/test_extraction_schema.py)
-class NamedExtractedField(BaseModel):
-    """One field of a change: which field it is, then either the words that state it or the
-    question that would settle it."""
+class ExtractedField(BaseModel):
+    """One value taken from the message: which field it is, then either the words that state it or
+    the question that would settle it. Never both, never neither. A cited span must quote its
+    mention exactly; that is checked against the text the model was shown.
+
+    The effective date uses this too, with name "effective_date" — one shape for every value, so
+    there is no second class and no rule about when a name is required."""
     model_config = ConfigDict(extra="forbid")
 
     name: str = PField(description="which field of this change kind this entry fills")
@@ -198,10 +178,10 @@ class ExtractedChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: ChangeKind
-    fields: list[NamedExtractedField]
+    fields: list[ExtractedField]
     notes: Optional[str] = None
 
-    def by_name(self) -> dict[str, NamedExtractedField]:
+    def by_name(self) -> dict[str, ExtractedField]:
         """Turn the list of fields into a dictionary keyed by field name.
 
         Safe to do because the validator below rejects a response that uses the same field name
@@ -248,7 +228,7 @@ def validate_citations(result: ExtractionResult, text: str) -> None:
     n = len(text)
     problems: list[str] = []
 
-    def _check(where: str, f: ExtractedField | NamedExtractedField) -> None:
+    def _check(where: str, f: ExtractedField) -> None:
         if f.unresolved:
             return
         s, e = f.source_span
@@ -334,7 +314,7 @@ class Field(BaseModel):
         return self
 
     @classmethod
-    def from_extracted(cls, f: "ExtractedField | NamedExtractedField") -> "Field":
+    def from_extracted(cls, f: "ExtractedField") -> "Field":
         return cls(entity_type=f.entity_type, mention=f.mention, source_span=f.source_span,
                    unresolved=f.unresolved, question=f.question)
 

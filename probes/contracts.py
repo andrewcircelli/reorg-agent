@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from reorg import intake, redact
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult,
-                             NamedExtractedField, ReorgIntent, missing_required)
+                             ExtractedField, ReorgIntent, missing_required)
 from reorg.model_client import ReplayClient, ReplayMismatch
 
 
@@ -34,21 +34,21 @@ print(f"  'Oct 1' starts at {i}; span [{i}, {i + 5}) → {red.text[i:i + 5]!r}")
 
 # ---------------------------------------------------------------------------------------------
 section("2. A field is CITED or UNRESOLVED — never both, never neither")
-ExtractedField(entity_type="date", mention="Oct 1", source_span=[i, i + 5])
+ExtractedField(name="effective_date", entity_type="date", mention="Oct 1", source_span=[i, i + 5])
 print("  cited field (mention + span)             ok")
-ExtractedField(entity_type="worker", unresolved=True, question="Which Sam?")
+ExtractedField(name="worker", entity_type="worker", unresolved=True, question="Which Sam?")
 print("  unresolved field (question)              ok")
-expect_error("empty field", lambda: ExtractedField(entity_type="worker"))
-expect_error("unresolved, no question", lambda: ExtractedField(entity_type="worker", unresolved=True))
-expect_error("cited, no span", lambda: ExtractedField(entity_type="worker", mention="Sam"))
-expect_error("reversed span", lambda: ExtractedField(entity_type="worker", mention="Sam", source_span=[9, 2]))
+expect_error("empty field", lambda: ExtractedField(name="worker", entity_type="worker"))
+expect_error("unresolved, no question", lambda: ExtractedField(name="worker", entity_type="worker", unresolved=True))
+expect_error("cited, no span", lambda: ExtractedField(name="worker", entity_type="worker", mention="Sam"))
+expect_error("reversed span", lambda: ExtractedField(name="worker", entity_type="worker", mention="Sam", source_span=[9, 2]))
 expect_error("both cited and unresolved", lambda: ExtractedField(
     entity_type="worker", mention="Sam", source_span=[0, 3], unresolved=True, question="?"))
 
 # ---------------------------------------------------------------------------------------------
 section("3. Field names are frozen per change kind; missing required names are reported, not hidden")
 def named(name, **kw):
-    return NamedExtractedField(name=name, mention="Sam", source_span=[0, 3], **kw)
+    return ExtractedField(name=name, mention="Sam", source_span=[0, 3], **kw)
 
 
 sam = named("worker", entity_type="worker")
@@ -64,7 +64,7 @@ print(f"  COMP_CHANGE with only 'worker'            accepted as a shape; missing
 
 # ---------------------------------------------------------------------------------------------
 section("4. Model output → workflow state: application code mints id + DRAFT; fingerprint binds to content")
-result = ExtractionResult(effective_date=ExtractedField(entity_type="date", mention="Oct 1", source_span=[i, i + 5]), changes=[])
+result = ExtractionResult(effective_date=ExtractedField(name="effective_date", entity_type="date", mention="Oct 1", source_span=[i, i + 5]), changes=[])
 print(f"  model-facing schema property names: {sorted(ExtractionResult.model_json_schema()['properties'])}")
 intent = ReorgIntent.from_extraction(result, source_id=red.source_id, sent_at=src.sent_at)
 print(f"  minted: id={intent.id}  status={intent.status}")

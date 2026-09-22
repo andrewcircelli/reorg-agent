@@ -6,18 +6,19 @@ import pytest
 from pydantic import ValidationError
 
 from reorg.contracts import (ChangeKind, ExtractedChange, ExtractedField, ExtractionResult, Field,
-                             NamedExtractedField, ReorgIntent, missing_required, sha256_of,
+                             ExtractedField, ReorgIntent, missing_required, sha256_of,
                              validate_citations)
 from reorg.model_client import (SCHEMA_SHA256, ReplayClient, ReplayMismatch, recording_key,
                                 record)
 
 
-def cited(t="worker", m="Sam", span=(0, 3), **kw):
-    return ExtractedField(entity_type=t, mention=m, source_span=list(span), **kw)
-
-
 def named(name, t="worker", m="Sam", span=(0, 3), **kw):
-    return NamedExtractedField(name=name, entity_type=t, mention=m, source_span=list(span), **kw)
+    return ExtractedField(name=name, entity_type=t, mention=m, source_span=list(span), **kw)
+
+
+def cited(t="worker", m="Sam", span=(0, 3), **kw):
+    """The effective date is the same shape as any other field, so it carries a name too."""
+    return named("effective_date", t, m, span, **kw)
 
 
 def _property_names(schema, acc=None):
@@ -41,12 +42,12 @@ def test_model_schema_has_no_workflow_state():
 
 
 @pytest.mark.parametrize("kwargs", [
-    dict(entity_type="worker"),                                            # empty
-    dict(entity_type="worker", unresolved=True),                           # unresolved, no question
-    dict(entity_type="worker", mention="Sam"),                             # cited, no span
-    dict(entity_type="worker", mention="Sam", source_span=[5, 2]),         # reversed span
-    dict(entity_type="worker", mention="Sam", source_span=[-2, 3]),        # negative
-    dict(entity_type="worker", mention="Sam", source_span=[0, 3], unresolved=True, question="?"),  # both
+    dict(name="worker", entity_type="worker"),                             # empty
+    dict(name="worker", entity_type="worker", unresolved=True),                           # unresolved, no question
+    dict(name="worker", entity_type="worker", mention="Sam"),                             # cited, no span
+    dict(name="worker", entity_type="worker", mention="Sam", source_span=[5, 2]),         # reversed span
+    dict(name="worker", entity_type="worker", mention="Sam", source_span=[-2, 3]),        # negative
+    dict(name="worker", entity_type="worker", mention="Sam", source_span=[0, 3], unresolved=True, question="?"),  # both
 ])
 def test_malformed_fields_fail_closed(kwargs):
     with pytest.raises(ValidationError):
@@ -54,7 +55,8 @@ def test_malformed_fields_fail_closed(kwargs):
 
 
 def test_unresolved_and_cited_shapes_are_valid():
-    ExtractedField(entity_type="cost_center", unresolved=True, question="Split into which cost center?")
+    ExtractedField(name="target_cc", entity_type="cost_center", unresolved=True,
+                   question="Split into which cost center?")
     cited("band", "L5", (10, 12))
 
 
@@ -124,9 +126,10 @@ def test_every_bad_citation_is_reported_in_one_error():
 
 def test_unresolved_fields_have_nothing_to_quote():
     r = ExtractionResult(
-        effective_date=ExtractedField(entity_type="date", unresolved=True, question="Effective when?"),
+        effective_date=ExtractedField(name="effective_date", entity_type="date", unresolved=True,
+                                      question="Effective when?"),
         changes=[ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[
-            NamedExtractedField(name="target_cc", entity_type="cost_center", unresolved=True,
+            ExtractedField(name="target_cc", entity_type="cost_center", unresolved=True,
                                 question="Which new cost center?")])])
     validate_citations(r, TEXT)
 
@@ -151,7 +154,8 @@ def _recording(**overrides):
             "schema_sha256": SCHEMA_SHA256,
             "input_sha256": sha256_of("msg A"),
             "prompt_sha256": sha256_of("sys"),
-            "raw": {"effective_date": {"entity_type": "date", "mention": "Oct 1", "source_span": [0, 5]}, "changes": []}}
+            "raw": {"effective_date": {"name": "effective_date", "entity_type": "date",
+                                      "mention": "Oct 1", "source_span": [0, 5]}, "changes": []}}
     meta.update(overrides)
     return meta
 
@@ -181,7 +185,8 @@ def test_ambiguous_identity_keeps_its_citation_and_round_trips():
 
 
 def test_human_supplied_answer_has_no_fabricated_span_and_round_trips():
-    f = Field.from_extracted(ExtractedField(entity_type="cost_center", unresolved=True, question="What is the new cost center?"))
+    f = Field.from_extracted(ExtractedField(name="target_cc", entity_type="cost_center",
+                                            unresolved=True, question="What is the new cost center?"))
     f.supply("4410", by="human:jordan.hrbp")
     back = Field.model_validate(f.model_dump(mode="json"))
     assert back.resolved_id == "4410" and back.supplied_by == "human:jordan.hrbp"

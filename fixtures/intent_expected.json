@@ -9,6 +9,7 @@
     "dates": "'Oct 1' as written. Year is inferred later from SourceRecord.sent_at, never from the machine clock."
   },
   "effective_date": {
+    "name": "effective_date",
     "entity_type": "date",
     "mention": "Oct 1",
     "source_span": [

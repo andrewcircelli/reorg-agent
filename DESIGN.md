@@ -184,7 +184,8 @@ append-only.
 Two families, kept apart on purpose.
 
 **What the model may produce.** An effective date and a list of changes; each change has a kind and a
-list of named fields; each field either quotes the message or is marked unanswered with a question.
+list of fields. **Every value in the system is the same shape** — a name, what kind of thing it is, and
+either the words that state it plus where they are, or a question. The effective date is one of them.
 None of these carries an id, a status, or a decision about who a name refers to. **A model response
 has no field in which to say "approved"** — which is the structural answer to instruction-like text
 arriving in a freeform channel. It can become a proposal and nothing else.

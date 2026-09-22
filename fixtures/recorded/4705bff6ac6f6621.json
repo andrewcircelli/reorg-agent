@@ -1,11 +1,11 @@
 {
-  "key": "b135323f5e9558d2",
+  "key": "4705bff6ac6f6621",
   "schema_version": "extraction-v1",
-  "schema_sha256": "71c41aacf51a2987d614ad7afdbd0b1ce60ed8c1a7a61ab5e33e651a2250cfa4",
+  "schema_sha256": "050ad74115ea3b1207626977e483059940f2179dc8a55c3e2f92379dccf83b79",
   "input_sha256": "57c5d6f99c4b3013a0e8f0c7eb77b695d7da741b2f7e77e4b988cd7a8976dd7e",
-  "prompt_sha256": "1b40f244165ed17e18cfc0e5ba70fe770e65f2e784fe79040b53d199e32f965a",
+  "prompt_sha256": "d8811009e6135f5ed2997f91b736407f18f7c38623edc9f069a92f3e269c5366",
   "model": "claude-opus-5",
-  "ts": "2026-09-22T12:43:32+00:00",
+  "ts": "2026-09-22T16:26:03+00:00",
   "usage": {
     "cache_creation": {
       "ephemeral_1h_input_tokens": 0,
@@ -14,16 +14,17 @@
     "cache_creation_input_tokens": 0,
     "cache_read_input_tokens": 0,
     "inference_geo": "global",
-    "input_tokens": 2916,
-    "output_tokens": 1569,
+    "input_tokens": 2349,
+    "output_tokens": 1535,
     "output_tokens_details": {
-      "thinking_tokens": 1054
+      "thinking_tokens": 1015
     },
     "server_tool_use": null,
     "service_tier": "standard"
   },
   "raw": {
     "effective_date": {
+      "name": "effective_date",
       "entity_type": "date",
       "mention": "Oct 1",
       "source_span": [
@@ -54,7 +55,7 @@
             "mention": null,
             "source_span": null,
             "unresolved": true,
-            "question": "What is the name or number of the new cost center that the Data Platform team will receive?"
+            "question": "What is the name or number of the new cost center created for the Data Platform team?"
           },
           {
             "name": "team",
@@ -68,7 +69,7 @@
             "question": null
           }
         ],
-        "notes": "The team is identified in the message as \"Priya's Data Platform team\"; the possessive is attribution and is not part of the team name."
+        "notes": null
       },
       {
         "kind": "COMP_CHANGE",
@@ -110,6 +111,6 @@
         "notes": null
       }
     ],
-    "notes": "The message closes with \"Let me know if I'm missing anything.\" \u2014 conversational, no additional change extracted."
+    "notes": "The message attributes the Data Platform team to \"Priya's\"; the possessive was excluded from the team mention as attribution. The closing line (\"Let me know if I'm missing anything.\") is conversational and carries no extractable change."
   }
 }

@@ -37,7 +37,7 @@ def test_no_open_ended_maps_in_the_model_facing_schema():
 
 def test_field_names_reach_the_model():
     schema = ExtractionResult.model_json_schema()
-    entry = schema["$defs"]["NamedExtractedField"]
+    entry = schema["$defs"]["ExtractedField"]
     assert "name" in entry["properties"] and "name" in entry["required"]
 
 
@@ -46,7 +46,7 @@ def test_field_name_comes_first():
     before it commits to evidence. `name` comes from the _FieldName base for exactly this reason
     (pydantic orders fields by reverse MRO); if that ever silently flips, the first live call's
     failure comes back — entries holding a name and nothing else."""
-    props = list(ExtractionResult.model_json_schema()["$defs"]["NamedExtractedField"]["properties"])
+    props = list(ExtractionResult.model_json_schema()["$defs"]["ExtractedField"]["properties"])
     assert props[0] == "name", f"name must be the first property, got {props}"
 
 
