@@ -10,8 +10,9 @@
 #   statement describes: cost posting to a cost center with no GL mapping, found weeks later at close.
 #   tests/test_registry.py detects its removal.
 #
-# Supported kinds: COST_CENTER_SPLIT, COMP_CHANGE.
-# Extension (planned kinds, not built): TEAM_MOVE adds hris.move_supervisory_org and a planning-tool
+# Supported kind: COST_CENTER_SPLIT.
+# Extension (planned kinds, not built): COMP_CHANGE adds hris.update_comp and a Comp/HR approver;
+# TEAM_MOVE adds hris.move_supervisory_org and a planning-tool
 # headcount step; MANAGER_CHANGE adds hris.change_manager; COST_CENTER_MERGE adds
 # finance.close_old_cost_center. Each is an entry here plus a field spec in reorg/contracts.py.
 
@@ -51,11 +52,3 @@ steps:
     deadline: before_period_close(effective_date)
     verify: rollup_parent(target_cc) == rollup_parent(source_cc)
     description: Add the new cost center to the consolidation rollup so period reports reflect the split.
-
-  - id: hris.update_comp
-    system: hris
-    applies_to: [COMP_CHANGE]
-    actuator: api
-    requires: []
-    verify: band_of(worker) == new_band
-    description: Apply the band / comp change. Requires comp_hr approval (Validator R_REQUIRED_ROLES).

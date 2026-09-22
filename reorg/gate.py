@@ -105,16 +105,19 @@ def approve(intent: ReorgIntent, findings: list[Finding], src: SourceRecord,
 #
 # Everything an approver needs to decide, and nothing they have to go and look up. Each value is
 # shown beside the words it came from, so it can be checked against the message rather than taken
-# on trust. This is also the only place a hidden pay figure is put back, because this is the only
-# place someone is being asked to approve it.
+# on trust.
+#
+# The hidden pay figure is NOT put back. The Redactor takes it out before the model sees the
+# message, and approving a cost center split does not require knowing anyone's salary — so it is
+# removed once and never restored. The packet shows the token, which tells the approver a figure was
+# present and was withheld, rather than pretending the message never contained one.
+#
+# If a change kind arrives whose approval genuinely turns on a figure, that is when rehydration
+# becomes a question worth answering — for a named role, in this one place, and nowhere else.
 # ---------------------------------------------------------------------------------------------
-def _rehydrate(text: str, redaction_map: dict) -> str:
-    for token, real_value in redaction_map.items():
-        text = text.replace(f"[{token}]", real_value)
-    return text
 
 
-def _describe(field: Field, source_text: str, redaction_map: dict) -> str:
+def _describe(field: Field, source_text: str) -> str:
     """One line per value, always showing where it came from.
 
     Four cases, and keeping them apart is the whole job of this function. A value quoted from the
@@ -125,9 +128,8 @@ def _describe(field: Field, source_text: str, redaction_map: dict) -> str:
     Getting the second case wrong is how an approver ends up believing a person invented something
     the message actually said."""
     quoted = source_text[field.source_span[0]:field.source_span[1]] if field.source_span else ""
-    evidence = (f'[message said “{_rehydrate(quoted, redaction_map)}”]' if quoted
-                else "[not stated in the message]")
-    value = _rehydrate(field.mention or "", redaction_map)
+    evidence = f'[message said “{quoted}”]' if quoted else "[not stated in the message]"
+    value = field.mention or ""
 
     if field.unresolved:
         return f"UNANSWERED — {field.question}  {evidence}"
@@ -141,18 +143,18 @@ def _describe(field: Field, source_text: str, redaction_map: dict) -> str:
 
 
 def render_packet(intent: ReorgIntent, findings: list[Finding], source_text: str,
-                  redaction_map: dict, approvals: list[Approval] | None = None,
+                  approvals: list[Approval] | None = None,
                   registry_version: str = "", reference_sha256: str = "") -> str:
     approvals = approvals or []
     out = [f"# Review packet — {intent.id}", "",
            f"From message `{intent.source_id}`, sent {intent.sent_at}.",
            f"Status: **{intent.status}**", "",
-           f"Effective date: {_describe(intent.effective_date, source_text, redaction_map)}", ""]
+           f"Effective date: {_describe(intent.effective_date, source_text)}", ""]
 
     for i, change in enumerate(intent.changes, 1):
         out.append(f"## Change {i} — {change.kind.value}")
         for name, field in change.fields.items():
-            out.append(f"- **{name}**: {_describe(field, source_text, redaction_map)}")
+            out.append(f"- **{name}**: {_describe(field, source_text)}")
         out.append("")
 
     out.append("## What the checks found")

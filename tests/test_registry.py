@@ -24,7 +24,7 @@ import yaml
 
 from reorg import compile as compile_mod
 from reorg.contracts import Field, StepDef
-from tests.test_validate import comp, intent, split
+from tests.test_validate import intent, split
 
 REG = Path("registry/steps.yaml")
 GL, WORKERS = "finance.map_gl", "hris.reassign_workers"
@@ -45,7 +45,7 @@ def without_the_edge():
 @pytest.fixture
 def jordan_intent():
     """The fixture message's shape: a cost center split and a pay change, both answered."""
-    return intent(split(), comp())
+    return intent(split())
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def position(plan):
 # ---- the registry itself -----------------------------------------------------------------------
 def test_registry_loads():
     steps, version = compile_mod.load_registry(REG)
-    assert len(steps) >= 5 and len(version) == 64
+    assert len(steps) >= 4 and len(version) == 64
 
 
 def test_the_registry_requires_gl_mapping_before_moving_workers(registry):
@@ -82,7 +82,7 @@ def test_an_ordering_check_alone_would_not_have_caught_it():
     """Why the two checks are separate. With the edge deleted, the compiled order still happens to
     put GL mapping first, because of how the ids sort. A test that only read the finished order
     would pass on an unsafe registry."""
-    where = position(plan_for(without_the_edge(), intent(split(), comp())))
+    where = position(plan_for(without_the_edge(), intent(split())))
     assert where[GL] < where[WORKERS]          # still "looks" right, and means nothing
 
 
@@ -96,15 +96,15 @@ def test_every_requirement_in_the_registry_names_a_real_step(registry):
 def test_a_registry_that_points_at_nothing_is_refused(tmp_path):
     bad = tmp_path / "steps.yaml"
     bad.write_text("version: 1\nsteps:\n"
-                   "  - {id: a, system: s, applies_to: [COMP_CHANGE], actuator: api, requires: [ghost]}\n")
+                   "  - {id: a, system: s, applies_to: [COST_CENTER_SPLIT], actuator: api, requires: [ghost]}\n")
     with pytest.raises(compile_mod.RegistryError, match="does not exist"):
         compile_mod.load_registry(bad)
 
 
 def test_steps_that_depend_on_each_other_in_a_loop_are_refused():
     looping = [
-        StepDef(id="a", system="s", applies_to=["COMP_CHANGE"], actuator="api", requires=["b"]),
-        StepDef(id="b", system="s", applies_to=["COMP_CHANGE"], actuator="api", requires=["a"]),
+        StepDef(id="a", system="s", applies_to=["COST_CENTER_SPLIT"], actuator="api", requires=["b"]),
+        StepDef(id="b", system="s", applies_to=["COST_CENTER_SPLIT"], actuator="api", requires=["a"]),
     ]
     with pytest.raises(compile_mod.RegistryError, match="loop"):
         compile_mod.order(looping)
@@ -122,8 +122,10 @@ def test_the_plan_respects_every_declared_dependency(registry, jordan_intent):
 
 
 def test_the_plan_only_contains_steps_this_request_needs(registry):
-    only_pay = plan_for(registry, intent(comp()))
-    assert {s.step_id for wave in only_pay.waves for s in wave} == {"hris.update_comp"}
+    """Every step in the registry applies to the one supported kind, so all of them are selected —
+    and a step for a kind this request does not contain would not be."""
+    plan = plan_for(registry, intent(split()))
+    assert {s.step_id for wave in plan.waves for s in wave} == {s.id for s in registry}
 
 
 def test_the_same_request_always_produces_the_same_plan(registry, jordan_intent):
@@ -135,10 +137,8 @@ def test_the_same_request_always_produces_the_same_plan(registry, jordan_intent)
 def test_the_plan_never_carries_the_pay_figure(registry):
     """The figure is hidden before the model sees it and is only put back in the review packet.
     A plan is a working document that gets passed around, so it keeps the token."""
-    change = comp()
-    change.fields["new_comp"] = Field(entity_type="text", mention="[COMP_1]", source_span=[0, 8])
-    dumped = str(plan_for(registry, intent(change)).model_dump())
-    assert "[COMP_1]" in dumped and "215" not in dumped
+    dumped = str(plan_for(registry, intent(split())).model_dump())
+    assert "215" not in dumped and "COMP_1" not in dumped
 
 
 # ---- the step no system can do ------------------------------------------------------------------
@@ -157,4 +157,4 @@ def test_the_compiler_will_not_quietly_drop_a_repeated_change(registry):
     """The Validator blocks this before approval; the compiler refuses too, so that no path can
     produce a plan missing a change the request asked for."""
     with pytest.raises(compile_mod.PlanRefused, match="more than one change of the same kind"):
-        plan_for(registry, intent(comp(worker="10422"), comp(worker="20871")))
+        plan_for(registry, intent(split(), split(target="4411")))

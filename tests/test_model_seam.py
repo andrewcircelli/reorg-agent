@@ -51,14 +51,14 @@ def responds(**fields):
 # ---- the contract rejects the answer, and says what the model sent --------------------------------
 def test_contract_violation_is_reported_with_the_models_own_words():
     payload = ('{"effective_date": {"name": "effective_date", "entity_type": "date", "mention": "Oct 1", "source_span": [0,5]},'
-               ' "changes": [{"kind": "COMP_CHANGE", "fields": [{"name": "worker", "entity_type":'
-               ' "worker", "mention": "Sam", "source_span": [1,4], "unresolved": true,'
-               ' "question": "which Sam?"}]}]}')
+               ' "changes": [{"kind": "COST_CENTER_SPLIT", "fields": [{"name": "team", "entity_type":'
+               ' "org", "mention": "Data Platform", "source_span": [1,4], "unresolved": true,'
+               ' "question": "which team?"}]}]}')
     with pytest.raises(ExtractionRejected) as exc:
         live(raises_validation(payload)).extract("sys", "msg")
     msg = str(exc.value)
     assert "cited or unresolved, not both" in msg, "the violated rule must be named"
-    assert "which Sam?" in msg, "the model's own output must come back for the prompt loop"
+    assert "which team?" in msg, "the model's own output must come back for the prompt loop"
 
 
 def test_a_refusal_is_not_an_empty_extraction():

@@ -62,12 +62,12 @@ def test_unresolved_and_cited_shapes_are_valid():
 
 def test_unknown_field_name_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("boss")])
+        ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[named("boss")])
 
 
 def test_wrong_entity_type_for_field_rejected():
     with pytest.raises(ValidationError):
-        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker", t="org")])
+        ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[named("team", t="worker")])
 
 
 def test_unsupported_kind_is_rejected_loudly():
@@ -76,14 +76,15 @@ def test_unsupported_kind_is_rejected_loudly():
 
 
 def test_missing_required_is_detected_not_silent():
-    ch = ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker")])
-    assert missing_required(ch) == ["new_band"]
+    ch = ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[named("source_cc", t="cost_center")])
+    assert missing_required(ch) == ["target_cc", "team"]
 
 
 def test_duplicate_field_name_rejected():
     """A list shape makes duplicates expressible, so they are refused rather than last-one-wins."""
     with pytest.raises(ValidationError, match="given twice"):
-        ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[named("worker"), named("worker", m="Sammy")])
+        ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT,
+                        fields=[named("team", t="org"), named("team", t="org", m="Infra")])
 
 
 # ---- citations must quote the text, not merely fit inside it ---------------------------------
@@ -113,15 +114,15 @@ def test_span_that_fits_but_quotes_other_words_fails_closed():
 def test_every_bad_citation_is_reported_in_one_error():
     r = ExtractionResult(
         effective_date=cited("date", "Oct 1", (0, 5)),                       # quotes "effec"
-        changes=[ExtractedChange(kind=ChangeKind.COMP_CHANGE, fields=[
-            named("worker", m="Sam", span=(31, 34)),                         # correct
-            named("new_band", t="band", m="L5", span=(0, 2)),                # quotes "ef"
+        changes=[ExtractedChange(kind=ChangeKind.COST_CENTER_SPLIT, fields=[
+            named("team", t="org", m="Sam", span=(31, 34)),                  # correct
+            named("source_cc", t="cost_center", m="L5", span=(0, 2)),        # quotes "ef"
         ])])
     with pytest.raises(ValueError) as exc:
         validate_citations(r, TEXT)
     msg = str(exc.value)
-    assert "effective_date" in msg and "changes[0].new_band" in msg
-    assert "changes[0].worker" not in msg, "a correct citation must not be reported"
+    assert "effective_date" in msg and "changes[0].source_cc" in msg
+    assert "changes[0].team" not in msg, "a correct citation must not be reported"
 
 
 def test_unresolved_fields_have_nothing_to_quote():

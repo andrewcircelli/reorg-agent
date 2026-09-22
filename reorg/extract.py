@@ -66,10 +66,9 @@ Mentions, not identities. Write the words the message uses ("Sam", "Infra cost c
 
 Where a mention starts and ends. Quote the complete phrase that names the thing. Leave out words that identify it by pointing at someone else — a possessive naming a person is attribution, not part of the name. If the message refers to something only by whose it is, then quote that, because it is the only name you were given.
 
-Supported change kinds, and their fields. A change carries a list of fields; every field states its own `name`, from that kind's list, at most once:
+One supported change kind. A change carries a list of fields; every field states its own `name`, from that kind's list, at most once:
 - COST_CENTER_SPLIT: source_cc (cost_center), target_cc (cost_center), team (org). The new cost center is UNRESOLVED unless the message names or numbers it.
-- COMP_CHANGE: worker (worker), new_band (band); optional new_comp (text).
-If the message describes a change of another kind, do not force it into these; leave it out and mention it in `notes`.
+A message may mention other things — people, pay, headcount — as background. Those are not changes of this kind. Do not force them into a COST_CENTER_SPLIT and do not invent a change kind for them; if the message asks for something this version does not support, say so in `notes`.
 
 Tokens such as [COMP_1] are redacted values. Copy them verbatim as the mention. Do not guess what they stand for.
 

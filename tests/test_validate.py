@@ -35,12 +35,6 @@ def split(source="4400", target="4410", team="org_data_platform"):
         "team": answered("org", team)})
 
 
-def comp(worker="10422", band="L5"):
-    return Change(kind=ChangeKind.COMP_CHANGE, fields={
-        "worker": answered("worker", worker),
-        "new_band": answered("band", band)})
-
-
 def rules_fired(findings, severity=None):
     return {f.rule_id for f in findings if severity is None or f.severity is severity}
 
@@ -51,7 +45,7 @@ def check(*changes, **kw):
 
 # ---- a request that is complete and consistent raises nothing blocking -------------------------
 def test_a_good_request_has_nothing_blocking():
-    assert rules_fired(check(split(), comp()), Severity.BLOCKING) == set()
+    assert rules_fired(check(split()), Severity.BLOCKING) == set()
 
 
 # ---- rule 1: anything unanswered stops everything ---------------------------------------------
@@ -91,24 +85,6 @@ def test_an_unknown_source_cost_center_blocks():
     assert "R_CC_EXISTS" in rules_fired(check(split(source="9999")), Severity.BLOCKING)
 
 
-# ---- rule 3: ids have to be real, including the ones a person typed ------------------------------
-def test_an_employee_id_a_person_invented_blocks():
-    """Before this rule existed, answering "which Sam?" with a number nobody has went all the way
-    through to fully approved, in silence. The model is not the only source that gets checked."""
-    change = comp()
-    change.fields["worker"] = Field(entity_type="worker", mention="Sam", source_span=[0, 3])
-    change.fields["worker"].supply("DOES-NOT-EXIST", by="human:jordan.hrbp")
-    findings = check(change)
-    assert "R_ID_EXISTS" in rules_fired(findings, Severity.BLOCKING)
-    message = " ".join(f.message for f in findings)
-    assert "not in the people directory" in message
-    assert "answered by human:jordan.hrbp" in message      # the packet has to say who said it
-
-
-def test_a_band_that_does_not_exist_blocks():
-    assert "R_ID_EXISTS" in rules_fired(check(comp(band="L99")), Severity.BLOCKING)
-
-
 def test_a_team_that_does_not_exist_blocks():
     assert "R_ID_EXISTS" in rules_fired(check(split(team="org_nope")), Severity.BLOCKING)
 
@@ -140,26 +116,9 @@ def test_the_team_rule_stays_quiet_while_something_is_still_unanswered():
     assert "R_TEAM_IN_SOURCE_CC" not in rules_fired(check(change))
 
 
-# ---- rule 5: say what the band change does -------------------------------------------------------
-def test_a_real_band_change_is_reported_for_the_approver():
-    findings = check(comp(worker="10422", band="L5"))     # Sam Okafor is L4
-    band = [f for f in findings if f.rule_id == "R_BAND_CHANGE"]
-    assert band and band[0].severity is Severity.INFO
-    assert "L4 → L5" in band[0].message
-
-
-def test_a_band_change_that_moves_nothing_is_a_warning():
-    """Usually means the wrong person was picked out of several with the same first name."""
-    findings = check(comp(worker="20871", band="L5"))     # Sam Reyes is already L5
-    band = [f for f in findings if f.rule_id == "R_BAND_CHANGE"]
-    assert band and band[0].severity is Severity.WARNING
-    assert "moves nothing" in band[0].message
-
-
 # ---- rule 6: who has to approve ------------------------------------------------------------------
-def test_one_kind_of_change_needs_one_role():
+def test_the_supported_change_kind_needs_finance():
     assert validate.required_roles(intent(split())) == ["finance"]
-    assert validate.required_roles(intent(comp())) == ["comp_hr"]
 
 
 def test_every_supported_change_kind_has_an_approving_role():
@@ -168,14 +127,6 @@ def test_every_supported_change_kind_has_an_approving_role():
     say anything useful."""
     from reorg.contracts import SUPPORTED_KINDS
     assert set(SUPPORTED_KINDS) <= set(validate.ROLE_FOR_KIND)
-
-
-def test_a_message_asking_for_both_needs_both_roles():
-    """The trap in the fixture: the pay change rides along with the org change, so Finance
-    approving the message would be approving something Finance does not own."""
-    assert validate.required_roles(intent(split(), comp())) == ["comp_hr", "finance"]
-    roles = [f.message for f in check(split(), comp()) if f.rule_id == "R_REQUIRED_ROLES"]
-    assert len(roles) == 2
 
 
 # ---- the wording of a finding has to point at the right place ------------------------------------
@@ -192,15 +143,21 @@ def test_the_team_rule_blames_the_message_only_when_the_message_is_to_blame():
     assert "misread" not in supplied
 
 
-# ---- rule 8: a repeated change kind would be partly thrown away ----------------------------------
+def test_an_org_id_a_person_invented_blocks():
+    """A person can answer a question by typing anything. Before this rule existed, an id nobody
+    has went through to fully approved in silence. The model is not the only source that gets
+    checked."""
+    change = split()
+    change.fields["team"] = Field(entity_type="org", mention="Data Platform team", source_span=[0, 3])
+    change.fields["team"].supply("org_does_not_exist", by="human:jordan.hrbp")
+    findings = check(change)
+    assert "R_ID_EXISTS" in rules_fired(findings, Severity.BLOCKING)
+    message = " ".join(f.message for f in findings)
+    assert "not in the org tree" in message and "answered by human:jordan.hrbp" in message
+
+
 def test_two_changes_of_the_same_kind_are_refused():
-    """The plan picks registry steps per kind of change, so two pay changes would produce one pay
-    step carrying only the second person. A request read correctly, approved, and then partly
-    discarded. This version refuses the input rather than mishandling it."""
-    findings = check(comp(worker="10422"), comp(worker="20871"))
+    """Steps are chosen per kind, so two splits would produce one set of steps carrying only the
+    second. This version refuses the input rather than mishandling it."""
+    findings = check(split(), split(target="4411"))
     assert "R_ONE_PER_KIND" in rules_fired(findings, Severity.BLOCKING)
-    assert "split them into separate requests" in " ".join(f.message for f in findings)
-
-
-def test_two_different_kinds_are_fine():
-    assert "R_ONE_PER_KIND" not in rules_fired(check(split(), comp()))

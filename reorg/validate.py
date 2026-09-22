@@ -9,7 +9,7 @@ reference data and returns a list of Findings. A Finding is just an observation 
     WARNING    proceed if you mean to, but look at this first
     INFO       something the approver should know, not a problem
 
-There are eight rules. Each one is a small function below that takes the request and the reference
+There are seven rules. Each one is a small function below that takes the request and the reference
 data and returns the findings it noticed. `validate` runs them in order and collects the lot. To
 add a rule, write the function and add it to the RULES list at the bottom. There is no framework
 here on purpose.
@@ -32,7 +32,6 @@ from .contracts import ChangeKind, Finding, ReorgIntent, Severity, missing_requi
 # Which part of the business owns each kind of change. A message asking for both needs both.
 ROLE_FOR_KIND = {
     ChangeKind.COST_CENTER_SPLIT: "finance",
-    ChangeKind.COMP_CHANGE: "comp_hr",
 }
 
 
@@ -174,41 +173,11 @@ def _team_sits_in_source(intent: ReorgIntent, reference: dict) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------------------------
-# Rule 6. Say what the band change actually does, and notice when it does nothing.
+# Rule 6. Say who has to approve this, and why.
 #
-# Not a safety rule. An approver signing off on a pay change should be able to see what it moves
-# from and to without looking anything up. A move to the band someone is already in is worth a
-# second look, because it usually means the wrong person was picked.
-# ---------------------------------------------------------------------------------------------
-def _band_change(intent: ReorgIntent, reference: dict) -> list[Finding]:
-    people = _by_id(reference.get("people", []))
-    found = []
-    for i, change in enumerate(intent.changes, 1):
-        if change.kind is not ChangeKind.COMP_CHANGE:
-            continue
-        worker = change.fields.get("worker")
-        band = change.fields.get("new_band")
-        if not (worker and band and worker.resolved_id and band.resolved_id):
-            continue
-        person = people.get(worker.resolved_id)
-        if person is None:
-            continue
-        if person.get("band") == band.resolved_id:
-            found.append(Finding(rule_id="R_BAND_CHANGE", severity=Severity.WARNING, change_ref=i,
-                                 message=(f"{person['name']} is already at band {band.resolved_id} — "
-                                          f"this change moves nothing")))
-        else:
-            found.append(Finding(rule_id="R_BAND_CHANGE", severity=Severity.INFO, change_ref=i,
-                                 message=f"{person['name']}: band {person.get('band')} → {band.resolved_id}"))
-    return found
-
-
-# ---------------------------------------------------------------------------------------------
-# Rule 7. Say who has to approve this, and why.
-#
-# One message can ask for two different kinds of thing. Splitting a cost center moves budget, which
-# is Finance's decision. Changing someone's band changes their pay, which is Comp/HR's. Finance
-# approving the whole message would be approving something it does not own.
+# Which part of the business owns the decision. This version supports one change kind, so it derives
+# one role — but the rule is per kind, not per request, so a message asking for two different kinds
+# of thing would need both owners, and one of them approving alone would not be enough.
 # ---------------------------------------------------------------------------------------------
 def _approval_roles(intent: ReorgIntent, reference: dict) -> list[Finding]:
     found = []
@@ -225,7 +194,7 @@ def required_roles(intent: ReorgIntent) -> list[str]:
 
 
 # ---------------------------------------------------------------------------------------------
-# Rule 8. One change of each kind per request.
+# Rule 7. One change of each kind per request.
 #
 # Steps are chosen per kind, so two pay changes would produce one pay step carrying only the second
 # person — a request read correctly, approved, then partly thrown away. Handling several properly
@@ -250,7 +219,6 @@ RULES = (
     _ids_are_real,
     _cost_centers,
     _team_sits_in_source,
-    _band_change,
     _one_change_per_kind,
     _approval_roles,
 )

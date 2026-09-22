@@ -1,0 +1,77 @@
+{
+  "key": "2c06d0fc380d6886",
+  "schema_version": "extraction-v1",
+  "schema_sha256": "aaaadf6e4667d21434989bca13c052b82dd5d0dbfd382e466d88fbbd50822e8d",
+  "input_sha256": "56ffbefff3239fdbc48d1d87227fd1e627fec2899d52ba6bcf6a57d775b50338",
+  "prompt_sha256": "80f8157ce396253f0e5a22080ae74b7caa3adfdf304ea7d345ff0e14bb3f1adc",
+  "model": "claude-opus-5",
+  "ts": "2026-09-22T18:41:12+00:00",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "inference_geo": "global",
+    "input_tokens": 2352,
+    "output_tokens": 1178,
+    "output_tokens_details": {
+      "thinking_tokens": 842
+    },
+    "server_tool_use": null,
+    "service_tier": "standard"
+  },
+  "raw": {
+    "effective_date": {
+      "name": "effective_date",
+      "entity_type": "date",
+      "mention": "Oct 1",
+      "source_span": [
+        21,
+        26
+      ],
+      "unresolved": false,
+      "question": null
+    },
+    "changes": [
+      {
+        "kind": "COST_CENTER_SPLIT",
+        "fields": [
+          {
+            "name": "source_cc",
+            "entity_type": "cost_center",
+            "mention": "Infra cost center",
+            "source_span": [
+              48,
+              65
+            ],
+            "unresolved": false,
+            "question": null
+          },
+          {
+            "name": "target_cc",
+            "entity_type": "cost_center",
+            "mention": null,
+            "source_span": null,
+            "unresolved": true,
+            "question": "What is the name or number of the new cost center that the Data Platform team will move to?"
+          },
+          {
+            "name": "team",
+            "entity_type": "org",
+            "mention": "Data Platform team",
+            "source_span": [
+              77,
+              95
+            ],
+            "unresolved": false,
+            "question": null
+          }
+        ],
+        "notes": "The message refers to an attached staffing context that was not provided."
+      }
+    ],
+    "notes": "Sam's current salary of [COMP_1] is mentioned as background only; compensation changes are not supported in this version and were not extracted."
+  }
+}

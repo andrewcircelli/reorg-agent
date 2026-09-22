@@ -88,17 +88,17 @@ def now_iso() -> str:
 # The docstring below is one of the ones the model reads, so it only says what the model needs to
 # know. The maintenance note stays up here in a comment, where the model never sees it.
 class ChangeKind(str, Enum):
-    """The kinds of change this system handles. Only COST_CENTER_SPLIT and COMP_CHANGE can be
-    extracted; the others are named but not built, and must not be used."""
+    """The kinds of change this system handles. Only COST_CENTER_SPLIT can be extracted; the others
+    are named but not built, and must not be used."""
     COST_CENTER_SPLIT = "COST_CENTER_SPLIT"   # supported
-    COMP_CHANGE = "COMP_CHANGE"               # supported
+    COMP_CHANGE = "COMP_CHANGE"               # planned
     TEAM_MOVE = "TEAM_MOVE"                   # planned
     MANAGER_CHANGE = "MANAGER_CHANGE"         # planned
     COST_CENTER_MERGE = "COST_CENTER_MERGE"   # planned
     HEADCOUNT_SHIFT = "HEADCOUNT_SHIFT"       # planned (open reqs move with a team; funding-exception semantics need a policy owner)
 
 
-SUPPORTED_KINDS = {ChangeKind.COST_CENTER_SPLIT, ChangeKind.COMP_CHANGE}
+SUPPORTED_KINDS = {ChangeKind.COST_CENTER_SPLIT}
 
 EntityType = Literal["worker", "org", "cost_center", "band", "date", "text"]
 
@@ -106,11 +106,9 @@ EntityType = Literal["worker", "org", "cost_center", "band", "date", "text"]
 # BLOCKING finding (R_REQUIRED_FIELDS). Extend here, then in the prompt — never the reverse.
 REQUIRED_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
     ChangeKind.COST_CENTER_SPLIT: {"source_cc": "cost_center", "target_cc": "cost_center", "team": "org"},
-    ChangeKind.COMP_CHANGE:       {"worker": "worker", "new_band": "band"},
 }
 OPTIONAL_FIELDS: dict[ChangeKind, dict[str, EntityType]] = {
     ChangeKind.COST_CENTER_SPLIT: {},
-    ChangeKind.COMP_CHANGE:       {"new_comp": "text"},
 }
 
 

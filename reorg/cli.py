@@ -119,8 +119,7 @@ def cmd_validate(a):
     _w(run, "04_resolved.json", intent)
     _w(run, "05_findings.json", {"findings": [f.model_dump(mode="json") for f in findings]})
     registry_version, reference_sha256 = _context()
-    packet = gate.render_packet(intent, findings, red_text,
-                                _r(run, "02_redaction_map.local.json"), _approvals(run),
+    packet = gate.render_packet(intent, findings, red_text, _approvals(run),
                                 registry_version, reference_sha256)
     _w(run, "06_packet.md", packet)
     print()
@@ -163,8 +162,7 @@ def cmd_approve(a):
     intent.status = "READY" if still else "APPROVED"
     _w(run, "04_resolved.json", intent)
     red_text = _r(run, "02_redacted.json")["text"]
-    _w(run, "06_packet.md", gate.render_packet(intent, findings, red_text,
-                                               _r(run, "02_redaction_map.local.json"), approvals,
+    _w(run, "06_packet.md", gate.render_packet(intent, findings, red_text, approvals,
                                                registry_version, reference_sha256))
 
     print(f"\n  recorded: {appr.role} approved by {appr.approver} at {appr.ts}")
