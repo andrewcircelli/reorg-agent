@@ -1,6 +1,6 @@
 """Phase 1 check — run: make check1
 
-Reads fixtures/intent_expected.json, FILLS IN any missing source_span from the mention (first
+Reads fixtures/intent_expected.json, RECOMPUTES every source_span from its mention (first
 occurrence in the redacted text unless "occurrence": N is given), writes the completed file back,
 then validates it and prints each span's actual words so you can eyeball every field.
 
@@ -19,18 +19,20 @@ text = red.text
 
 
 def strip_notes(obj):
+    """Drop note keys (starting with _) and the helper key "occurrence" before validating."""
     if isinstance(obj, dict):
-        return {k: strip_notes(v) for k, v in obj.items() if not k.startswith("_")}
+        return {k: strip_notes(v) for k, v in obj.items() if not k.startswith("_") and k != "occurrence"}
     if isinstance(obj, list):
         return [strip_notes(v) for v in obj]
     return obj
 
 
 def fill_span(label, f):
-    """Mutates f: adds source_span from mention if absent. Returns a note for printing."""
-    if f.get("unresolved") or "source_span" in f or not f.get("mention"):
+    """Mutates f: always recomputes source_span from mention, so an edited mention never keeps a stale span."""
+    if f.get("unresolved") or not f.get("mention"):
+        f.pop("source_span", None)
         return ""
-    n = f.pop("occurrence", 1)
+    n = f.get("occurrence", 1)
     start = -1
     for _ in range(n):
         start = text.find(f["mention"], start + 1)

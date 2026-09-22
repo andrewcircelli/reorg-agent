@@ -67,7 +67,24 @@
     {
       "_todo": "[2] COST_CENTER_SPLIT \u2014 source_cc: which words? target_cc: is there any text naming it? (see _settled_semantics.target_cc)",
       "kind": "COST_CENTER_SPLIT",
-      "fields": {}
+      "fields": {
+        "source_cc": {
+          "entity_type": "cost_center",
+          "mention": "Priya's Data Platform team",
+          "source_span": [
+            28,
+            54
+          ]
+        },
+        "target_cc": {
+          "entity_type": "cost_center",
+          "mention": "Priya's Data Platform team",
+          "source_span": [
+            28,
+            54
+          ]
+        }
+      }
     },
     {
       "_todo": "[3] HEADCOUNT_SHIFT \u2014 team, open_reqs (with quantity), funding_cc, funding_until. 'open reqs' appears twice: which occurrence is the headcount claim? (add \"occurrence\": 2 if the second)",
