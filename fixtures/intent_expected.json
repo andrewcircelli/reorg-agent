@@ -3,7 +3,7 @@
   "_how": "For each field: its `name`, then the exact words as `mention` (make check1 fills source_span), or `unresolved: true` + `question`. Keys starting with _ are ignored. Field names per kind: contracts.REQUIRED_FIELDS / OPTIONAL_FIELDS.",
   "_settled_semantics": {
     "target_cc": "The message says the team 'gets its own' cost center but never names or numbers it -> unresolved + question. Never invented.",
-    "team": "The team that moves onto the new cost center. Who is on it comes from reference data (the Resolver/adapter), not from the message.",
+    "team": "The team that moves onto the new cost center. The mention is the phrase that NAMES the team; \"Priya's\" is attribution pointing at a person, and deciding who that is belongs to the Resolver, not the Extractor \u2014 the same rule that makes \"Sam\" a question rather than a guess (log #25). Who is on the team comes from reference data, not from the message.",
     "sam": "mention 'Sam' only, no team or org context in the message. The Resolver searches the whole directory; more than one match -> unresolved, ask for an employee ID.",
     "comp": "new_comp is the token [COMP_1] as it appears after redaction; the model never sees the figure. new_band is 'L5'.",
     "dates": "'Oct 1' as written. Year is inferred later from SourceRecord.sent_at, never from the machine clock."
@@ -38,9 +38,9 @@
         {
           "name": "team",
           "entity_type": "org",
-          "mention": "Priya's Data Platform team",
+          "mention": "Data Platform team",
           "source_span": [
-            69,
+            77,
             95
           ]
         }

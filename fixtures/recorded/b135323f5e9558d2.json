@@ -1,11 +1,11 @@
 {
-  "key": "1f967699ed78ce17",
+  "key": "b135323f5e9558d2",
   "schema_version": "extraction-v1",
   "schema_sha256": "71c41aacf51a2987d614ad7afdbd0b1ce60ed8c1a7a61ab5e33e651a2250cfa4",
   "input_sha256": "57c5d6f99c4b3013a0e8f0c7eb77b695d7da741b2f7e77e4b988cd7a8976dd7e",
-  "prompt_sha256": "db3f20102f0a2919ed6dbdc87dda164bd28c82dd95ae1d7eb0ceedc2b712b376",
+  "prompt_sha256": "1b40f244165ed17e18cfc0e5ba70fe770e65f2e784fe79040b53d199e32f965a",
   "model": "claude-opus-5",
-  "ts": "2026-09-22T02:09:25+00:00",
+  "ts": "2026-09-22T12:43:32+00:00",
   "usage": {
     "cache_creation": {
       "ephemeral_1h_input_tokens": 0,
@@ -14,10 +14,10 @@
     "cache_creation_input_tokens": 0,
     "cache_read_input_tokens": 0,
     "inference_geo": "global",
-    "input_tokens": 2823,
-    "output_tokens": 1468,
+    "input_tokens": 2916,
+    "output_tokens": 1569,
     "output_tokens_details": {
-      "thinking_tokens": 990
+      "thinking_tokens": 1054
     },
     "server_tool_use": null,
     "service_tier": "standard"
@@ -54,21 +54,21 @@
             "mention": null,
             "source_span": null,
             "unresolved": true,
-            "question": "What is the name or number of the new cost center created for the Data Platform team?"
+            "question": "What is the name or number of the new cost center that the Data Platform team will receive?"
           },
           {
             "name": "team",
             "entity_type": "org",
-            "mention": "Priya's Data Platform team",
+            "mention": "Data Platform team",
             "source_span": [
-              69,
+              77,
               95
             ],
             "unresolved": false,
             "question": null
           }
         ],
-        "notes": null
+        "notes": "The team is identified in the message as \"Priya's Data Platform team\"; the possessive is attribution and is not part of the team name."
       },
       {
         "kind": "COMP_CHANGE",
@@ -110,6 +110,6 @@
         "notes": null
       }
     ],
-    "notes": "The message's closing request (\"Let me know if I'm missing anything.\") is content, not an instruction acted upon."
+    "notes": "The message closes with \"Let me know if I'm missing anything.\" \u2014 conversational, no additional change extracted."
   }
 }

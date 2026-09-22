@@ -1,14 +1,26 @@
 PY := .venv/bin/python
 RUN := runs/demo
 
-.PHONY: setup demo record test clean
+.PHONY: help setup demo test clean redacted probe0 check1 phase2
+.DEFAULT_GOAL := help
 
-setup:
+# The list is derived from the `## ` comments below, so it cannot drift out of date the way a
+# hand-maintained block would (the same reasoning as binding a recording to its schema).
+help:  ## Show this list
+	@echo 'reorg-agent — make <target>   (add LIVE=1 for a real model call)'
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
+		| awk 'BEGIN{FS=":.*?## "}{printf "  %-10s %s\n", $$1, $$2}'
+
+setup:  ## Create .venv and install requirements
 	python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt
+
+phase2:  ## Extract the fixture message and diff against the answer key (LIVE=1 calls the model and re-records)
+	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/phase2 $(if $(LIVE),--live --record,)
+	PYTHONPATH=. $(PY) probes/phase2_diff.py runs/phase2
 
 # Full demo arc. Keyless by default (replay of a recorded real model response).
 # LIVE=1 makes the real call (needs ANTHROPIC_API_KEY in .env).
-demo:
+demo:  ## The whole arc: intake -> validate -> refused approval -> resolve -> approve -> compile
 	$(PY) -m reorg.cli intake   fixtures/msg_jordan.txt --run $(RUN) $(if $(LIVE),--live,)
 	$(PY) -m reorg.cli validate $(RUN)
 	-$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
@@ -16,27 +28,17 @@ demo:
 	$(PY) -m reorg.cli approve  $(RUN) --as finance-approver
 	$(PY) -m reorg.cli compile  $(RUN)
 
-# Re-record the model response used by replay (LIVE call).
-record:
-	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/record --live --record
-
-test:
+test:  ## Run the test suite
 	$(PY) -m pytest -q
 
-clean:
-	rm -rf runs/demo runs/record
-
-# Print the redacted Jordan message with character offsets (for writing intent_expected.json spans).
-redacted:
-	$(PY) -c "from reorg import intake, redact; r,_=redact.redact(intake.capture(\"fixtures/msg_jordan.txt\")); t=r.text; print(t); print(); [print(f\"{i:4} {t[i:i+40]!r}\") for i in range(0,len(t),40)]"
-
-probe0:
-	PYTHONPATH=. $(PY) probes/phase0.py
-
-check1:
+check1:  ## Validate the answer key and show every span beside the words it quotes
 	PYTHONPATH=. $(PY) probes/phase1_check.py
 
-# Phase 2: run the extractor on the fixture (replay by default; LIVE=1 makes the real call and records it), then diff.
-phase2:
-	$(PY) -m reorg.cli intake fixtures/msg_jordan.txt --run runs/phase2 $(if $(LIVE),--live --record,)
-	PYTHONPATH=. $(PY) probes/phase2_diff.py runs/phase2
+probe0:  ## Show the contracts accepting valid shapes and refusing bad ones
+	PYTHONPATH=. $(PY) probes/phase0.py
+
+redacted:  ## Print the redacted message with character offsets
+	$(PY) -c "from reorg import intake, redact; r,_=redact.redact(intake.capture(\"fixtures/msg_jordan.txt\")); t=r.text; print(t); print(); [print(f\"{i:4} {t[i:i+40]!r}\") for i in range(0,len(t),40)]"
+
+clean:  ## Delete generated run directories
+	rm -rf runs/demo runs/phase2

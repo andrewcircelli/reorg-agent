@@ -1,6 +1,6 @@
 [
-  {"id": "org_infra",         "name": "Infrastructure", "aliases": ["Infra"],                          "leader": "10001", "parent": null,        "cost_center": "4400", "legal_entity": "US-1"},
-  {"id": "org_product_eng",   "name": "Product Engineering", "aliases": ["Product Eng"],               "leader": "10002", "parent": null,        "cost_center": "4500", "legal_entity": "US-1"},
-  {"id": "org_data_platform", "name": "Data Platform", "aliases": ["Priya's team", "Data Platform team"], "leader": "10003", "parent": "org_infra", "cost_center": "4400", "legal_entity": "US-1"},
-  {"id": "org_payments",      "name": "Payments", "aliases": [],                                      "leader": null,    "parent": null,        "cost_center": "4600", "legal_entity": "US-1"}
+  {"id": "org_infra", "name": "Infrastructure", "code": "INFRA", "leader": "10001", "parent": null, "cost_center": "4400", "legal_entity": "US-1"},
+  {"id": "org_product_eng", "name": "Product Engineering", "code": "PRODENG", "leader": "10002", "parent": null, "cost_center": "4500", "legal_entity": "US-1"},
+  {"id": "org_data_platform", "name": "Data Platform", "code": "DATAPLAT", "leader": "10003", "parent": "org_infra", "cost_center": "4400", "legal_entity": "US-1"},
+  {"id": "org_payments", "name": "Payments", "code": "PAY", "leader": null, "parent": null, "cost_center": "4600", "legal_entity": "US-1"}
 ]
