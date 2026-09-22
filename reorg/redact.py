@@ -1,4 +1,4 @@
-"""2. Redactor — deterministic pre-pass for compensation figures.
+"""Stage 2 · Redactor — take the pay figures out before anything else sees the message.
 
 What this does and does not do, stated plainly. It replaces pay figures in the formats matched
 below. It is not general-purpose personal-data removal. Names and team relationships stay in the

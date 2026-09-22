@@ -1,4 +1,4 @@
-"""Step 7: turn an approved request into an ordered list of steps.
+"""Stage 7 · Plan Compiler — turn an approved request into an ordered list of steps.
 
 The registry in registry/steps.yaml is the checklist that used to live in somebody's head: what a
 reorg actually requires, in which systems, and what has to happen before what. This file reads it,

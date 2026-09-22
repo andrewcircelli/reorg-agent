@@ -1,4 +1,4 @@
-"""Everything that talks to the AI model, kept in one file.
+"""Not a stage · the model seam — everything that talks to the AI model, in one file.
 
 The rest of the project never calls the model directly; it asks for a ModelClient. Swapping this
 file for one that calls Coinbase's own gateway would change nothing else.

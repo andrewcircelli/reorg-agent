@@ -1,4 +1,4 @@
-"""Step 5: check the resolved request against the rules, and report what is wrong.
+"""Stage 5 · Validator — check the resolved request against the rules, and report what is wrong.
 
 This file answers one question: is this request safe to put in front of a person for approval?
 

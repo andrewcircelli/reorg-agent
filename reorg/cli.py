@@ -1,4 +1,4 @@
-"""One subcommand per demo beat. Each stage reads the previous stage's JSON and writes its own.
+"""Not a stage · the command line — one subcommand per demo beat, four for seven stages. Each stage reads the previous stage's JSON and writes its own.
 The run directory is the audit trail.
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Step 6: the approval gate. The place a person, and only a person, says yes.
+"""Stage 6 · Approval Gate — the place a person, and only a person, says yes.
 
 Nothing in this file can be reached by the model. The model has no field it could use to approve
 anything, so approval is not something it can ask for, get wrong, or be tricked into. It is a

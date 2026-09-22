@@ -1,4 +1,4 @@
-"""1. Intake — capture the message exactly as it arrived. No interpretation."""
+"""Stage 1 · Intake — capture the message exactly as it arrived. No interpretation."""
 from __future__ import annotations
 
 import uuid

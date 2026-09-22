@@ -1,4 +1,4 @@
-"""The data shapes used everywhere else in this project.
+"""Not a stage · Contracts — the data shapes every stage passes to the next.
 
 Each step of the pipeline hands the next one an object defined here, and every object gets written
 to disk as JSON in runs/<id>/. That folder is the audit trail.

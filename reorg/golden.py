@@ -1,4 +1,4 @@
-"""Compare what the model produced against the answer key, field by field.
+"""Not a stage · the eval — compare what the model produced against the answer key.
 
 The answer key is fixtures/intent_expected.json: how a person read the same message, written down
 before any model was run. This file is what turns "the output looks about right" into a pass or a

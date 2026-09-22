@@ -1,4 +1,4 @@
-"""Step 4: turn the words the model quoted into ids from the reference data.
+"""Stage 4 · Resolver — turn the words the model quoted into ids from the reference data.
 
 The model gives us words. It is told never to decide who or what those words refer to, because it
 cannot look anything up. This file does the looking up, and it does it with plain string matching

@@ -1,4 +1,4 @@
-"""Step 3: the one and only call to the AI model.
+"""Stage 3 · Extractor — the one and only call to the AI model.
 
 It takes the message with the pay figures already blanked out, and turns it into an
 ExtractionResult: the changes being asked for, each value quoted from the message, and a question
