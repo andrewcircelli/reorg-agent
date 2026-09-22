@@ -126,7 +126,7 @@ a simulated adapter would demonstrate my assumptions rather than their systems.
 registry, re-deriving it per run means it can come out differently per run, and nobody reviews the
 result until the month closes.
 
-**I chose not to build a prompt-injection detector, because** the structural defence already holds —
+**I chose not to build a prompt-injection detector, because** the structural defense already holds —
 the model-facing schema has no approval field and the gate is not callable by the model — and a
 detector I have not tested properly would be a claim rather than a protection.
 

@@ -46,7 +46,7 @@ def test_a_single_match_resolves(entity_type, mention, expected):
 
 # ---- anything else becomes a question --------------------------------------------------------
 def test_three_sams_is_a_question_not_a_guess():
-    """The centre of the demo. A model could pick one; this cannot, and does not try."""
+    """The heart of the demo. A model could pick one; this cannot, and does not try."""
     f = resolved("worker", "Sam")
     assert f.resolved_id is None
     assert f.unresolved and "Which one" in f.question
@@ -69,7 +69,7 @@ def test_no_match_says_so_and_offers_nothing():
 # ---- the mistakes we are most trying to avoid -------------------------------------------------
 def test_a_code_does_not_match_a_longer_word():
     """The org code PAY must not match the word "payments". A silent wrong match here would move
-    people into the wrong cost centre, and nothing downstream would disagree."""
+    people into the wrong cost center, and nothing downstream would disagree."""
     f = resolved("cost_center", "Payments cost center")
     assert f.resolved_id == "4600"          # matched the org name, not the code inside a word
 
@@ -82,14 +82,14 @@ def test_reference_data_is_not_quietly_extended():
 
 
 def test_an_answer_from_a_person_is_never_overwritten():
-    f = Field(entity_type="cost_center", unresolved=True, question="Which new cost centre?")
+    f = Field(entity_type="cost_center", unresolved=True, question="Which new cost center?")
     f.supply("4410", by="human:jordan.hrbp")
     resolve._resolve_field(f, SENT_AT, REFERENCE)
     assert f.resolved_id == "4410" and f.supplied_by == "human:jordan.hrbp"
 
 
 def test_a_field_the_message_never_stated_is_left_for_a_person():
-    f = Field(entity_type="cost_center", unresolved=True, question="Which new cost centre?")
+    f = Field(entity_type="cost_center", unresolved=True, question="Which new cost center?")
     resolve._resolve_field(f, SENT_AT, REFERENCE)
     assert f.resolved_id is None and f.unresolved
 

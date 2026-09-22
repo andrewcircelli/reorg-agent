@@ -118,7 +118,7 @@ def test_the_packet_puts_the_hidden_pay_figure_back():
 def test_a_value_the_message_never_gave_is_shown_as_such():
     change = split()
     change.fields["target_cc"] = Field(entity_type="cost_center", unresolved=True,
-                                       question="Which new cost centre?")
+                                       question="Which new cost center?")
     change.fields["target_cc"].supply("4410", by="human:jordan.hrbp")
     packet = gate.render_packet(intent(change), [], TEXT, MAP)
     assert "4410 (answered by human:jordan.hrbp)" in packet

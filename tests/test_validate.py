@@ -57,10 +57,10 @@ def test_a_good_request_has_nothing_blocking():
 # ---- rule 1: anything unanswered stops everything ---------------------------------------------
 def test_an_unanswered_field_blocks():
     change = split()
-    change.fields["target_cc"] = unanswered("cost_center", "Which new cost centre?")
+    change.fields["target_cc"] = unanswered("cost_center", "Which new cost center?")
     findings = check(change)
     assert "R_UNRESOLVED" in rules_fired(findings, Severity.BLOCKING)
-    assert "Which new cost centre?" in " ".join(f.message for f in findings)
+    assert "Which new cost center?" in " ".join(f.message for f in findings)
 
 
 def test_an_unanswered_effective_date_blocks():
@@ -78,16 +78,16 @@ def test_a_missing_required_field_blocks():
     assert "team" in " ".join(f.message for f in findings)
 
 
-# ---- rule 3: the cost centre being split exists, the new one does not ---------------------------
-def test_a_target_cost_centre_that_already_exists_blocks():
-    """A split creates a cost centre. If the number already exists, someone has mistyped it, and
+# ---- rule 3: the cost center being split exists, the new one does not ---------------------------
+def test_a_target_cost_center_that_already_exists_blocks():
+    """A split creates a cost center. If the number already exists, someone has mistyped it, and
     carrying on would move people into another team's budget line."""
     findings = check(split(target="4500"))
     assert "R_CC_EXISTS" in rules_fired(findings, Severity.BLOCKING)
     assert "already exists" in " ".join(f.message for f in findings)
 
 
-def test_an_unknown_source_cost_centre_blocks():
+def test_an_unknown_source_cost_center_blocks():
     assert "R_CC_EXISTS" in rules_fired(check(split(source="9999")), Severity.BLOCKING)
 
 
@@ -113,16 +113,16 @@ def test_a_team_that_does_not_exist_blocks():
     assert "R_ID_EXISTS" in rules_fired(check(split(team="org_nope")), Severity.BLOCKING)
 
 
-def test_the_new_cost_centre_is_not_required_to_exist():
-    """This rule must stay out of the way of cost centres. A split creates the target one, so its
-    absence is the normal case, not an error. Rule 4 owns cost centres for that reason."""
+def test_the_new_cost_center_is_not_required_to_exist():
+    """This rule must stay out of the way of cost centers. A split creates the target one, so its
+    absence is the normal case, not an error. Rule 4 owns cost centers for that reason."""
     assert "R_ID_EXISTS" not in rules_fired(check(split(target="4410")))
 
 
 # ---- rule 4: the team must really sit where the message says it does ----------------------------
-def test_a_team_that_does_not_sit_in_the_source_cost_centre_blocks():
+def test_a_team_that_does_not_sit_in_the_source_cost_center_blocks():
     """The request reads perfectly and every quote is real. It is still wrong: Payments does not
-    sit in the Infra cost centre. Nothing before this rule could notice."""
+    sit in the Infra cost center. Nothing before this rule could notice."""
     findings = check(split(team="org_payments"))          # Payments sits in 4600, not 4400
     assert "R_TEAM_IN_SOURCE_CC" in rules_fired(findings, Severity.BLOCKING)
     assert "may have been misread" in " ".join(f.message for f in findings)
@@ -180,7 +180,7 @@ def test_a_message_asking_for_both_needs_both_roles():
 
 # ---- the wording of a finding has to point at the right place ------------------------------------
 def test_the_team_rule_blames_the_message_only_when_the_message_is_to_blame():
-    """A finding is read by someone deciding where to look. If a person supplied the cost centre,
+    """A finding is read by someone deciding where to look. If a person supplied the cost center,
     telling them the message was misread sends them to the wrong document."""
     from_message = check(split(team="org_payments"))
     assert "the message may have been misread" in " ".join(f.message for f in from_message)
@@ -188,7 +188,7 @@ def test_the_team_rule_blames_the_message_only_when_the_message_is_to_blame():
     change = split()
     change.fields["source_cc"].supply("4600", by="human:jordan.hrbp")
     supplied = " ".join(f.message for f in check(change))
-    assert "check which team and which cost centre are meant" in supplied
+    assert "check which team and which cost center are meant" in supplied
     assert "misread" not in supplied
 
 

@@ -58,7 +58,7 @@ review packet be honest about where a value came from:
 | quoted and looked up | "Sam Okafor" | false | `10422` | — | one directory match |
 | quoted, still open | "Sam" | **true** | — | — | three Sams: keeps its quote **and** gains a question + candidates |
 | answered by a person | "Sam" | false | `10422` | `human:jordan.hrbp` | a person said which Sam; **the quote survives** |
-| never in the message | — | true → false | `4410` | `human:jordan.hrbp` | the new cost centre, which the message never named |
+| never in the message | — | true → false | `4410` | `human:jordan.hrbp` | the new cost center, which the message never named |
 
 Row two is the one the model's version forbids — there, a field is quoted **or** unanswered, never
 both. Row three is why the packet reads *"Sam → 10422 (answered by the HR partner) [message said

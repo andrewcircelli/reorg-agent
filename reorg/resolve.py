@@ -22,7 +22,7 @@ WHAT EACH KIND OF VALUE MATCHES AGAINST
                whole name, or one part of it. So "Sam" finds three people and becomes a question.
   org          the org tree, on name or code, after tidying the mention (see _org_phrase).
   cost_center  a number is already an id. Otherwise we look for an org named inside the mention,
-               as in "Infra cost center", and use that org's cost centre.
+               as in "Infra cost center", and use that org's cost center.
   band         the list of bands.
   date         turned into a proper date, using the year the message was sent.
 
@@ -85,8 +85,8 @@ def _cost_centers(mention: str, orgs: list[dict]) -> list[str]:
     m = _norm(mention)
     if m.isdigit():
         return [m]
-    # "Infra cost center" does not name a cost centre, it names an org. Find the org, then take
-    # the cost centre it currently sits in.
+    # "Infra cost center" does not name a cost center, it names an org. Find the org, then take
+    # the cost center it currently sits in.
     hits = {o["cost_center"] for o in orgs
             if _contains_word(m, _norm(o["name"])) or _contains_word(m, _norm(o.get("code") or ""))}
     return sorted(hits)

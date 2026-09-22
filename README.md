@@ -80,7 +80,7 @@ REFUSED: 2 blocking finding(s) outstanding — nothing to approve yet.
 ```
 
 **5. A person answers, and both owners approve.** The two questions are answered
-(`--resolve 2.worker=10422 --resolve 1.target_cc=4410`). Splitting a cost centre is Finance's
+(`--resolve 2.worker=10422 --resolve 1.target_cc=4410`). Splitting a cost center is Finance's
 decision; changing someone's band is Comp/HR's. One message asks for both, so one approval is not
 enough:
 
@@ -119,7 +119,7 @@ completion *would* be confirmed — stated as a requirement, and explicitly not 
 ### The test that carries the argument
 
 `hris.reassign_workers` requires `finance.map_gl`. Delete that edge and workers can be moved into a
-cost centre with no GL mapping — the error that surfaces weeks later at close.
+cost center with no GL mapping — the error that surfaces weeks later at close.
 
 The interesting part is that **the obvious test does not catch it.** Deleting the edge leaves the
 compiled order unchanged, because `finance.map_gl` happens to sort before `hris.reassign_workers`.
@@ -134,18 +134,18 @@ the trap stays written down.
 Follow one message through, in this order. Each file is one stage, and each writes the artifact the
 next one reads.
 
-| # | File | What it decides |
-|---|---|---|
-| 0 | `reorg/contracts.py` | the shapes everything else passes around. Its header lists the five decisions in it — start here, with `DATA-MODEL.md` open beside it |
-| 1 | `reorg/intake.py` | capture the message unchanged |
-| 2 | `reorg/redact.py` | replace pay figures before the model sees anything |
-| 3 | `reorg/extract.py` | the one model call. The header walks each paragraph of the prompt as a decision |
-| 4 | `reorg/resolve.py` | words → ids, and a question whenever that is not certain |
-| 5 | `reorg/validate.py` | eight rules; is this safe to put in front of a person? |
-| 6 | `reorg/gate.py` | the three refusals, and what an approval is attached to |
-| 7 | `reorg/compile.py` | select steps, order them, emit the task card |
-| — | `reorg/model_client.py` | the seam: real call, or replay of a recorded one |
-| — | `registry/steps.yaml` | the checklist that used to live in someone's head |
+| # | File | | What it decides |
+|---|---|---|---|
+| 0 | `reorg/contracts.py` | supporting | the shapes everything else passes around. Its header lists the five decisions in it — start here, with `DATA-MODEL.md` open beside it |
+| 1 | `reorg/intake.py` | **stage** | capture the message unchanged |
+| 2 | `reorg/redact.py` | **stage** | replace pay figures before the model sees anything |
+| 3 | `reorg/extract.py` | **stage** | the one model call. The header walks each paragraph of the prompt as a decision |
+| 4 | `reorg/resolve.py` | **stage** | words → ids, and a question whenever that is not certain |
+| 5 | `reorg/validate.py` | **stage** | eight rules; is this safe to put in front of a person? |
+| 6 | `reorg/gate.py` | **stage** | the three refusals, and what an approval is attached to |
+| 7 | `reorg/compile.py` | **stage** | select steps, order them, emit the task card |
+| — | `reorg/model_client.py` | supporting | the seam: real call, or replay of a recorded one |
+| — | `registry/steps.yaml` | data | the checklist that used to live in someone's head |
 
 If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.
 

@@ -11,7 +11,7 @@ the values it would act on, in an order a person can read and argue with.
 WHY THE ORDER IS THE POINT
 
 The failure this system exists for is not a forgotten step; it is steps done in the wrong order,
-with nothing complaining until the month closes. Move workers into a cost centre with no GL mapping
+with nothing complaining until the month closes. Move workers into a cost center with no GL mapping
 and their costs post to nothing. So the registry records `requires`, this file will not contradict
 it, and tests/test_registry.py makes sure the load-bearing edge cannot be deleted quietly.
 

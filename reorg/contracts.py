@@ -283,7 +283,7 @@ class Field(BaseModel):
       keep the original quote and add a question plus the list of candidates. The model's version
       of a field forbids this combination; here it is normal.
 
-      Answered by a person. Someone replies that the new cost centre is 4410. That value was never
+      Answered by a person. Someone replies that the new cost center is 4410. That value was never
       in the message, so it has no quote and no location, and we do not invent one. `supplied_by`
       records who answered instead.
 

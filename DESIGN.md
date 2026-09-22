@@ -16,7 +16,7 @@ it running.
 **Today.** A leader decides. The HR business partner hears about it in a Slack message written in
 prose, opens three systems, and works out what is true from a runbook last updated by someone who has
 left — plus a private checklist of what has to happen and, more importantly, in what order. Each
-hand-off is another message. Everything looks done. Then payroll posts, the new cost centre has no GL
+hand-off is another message. Everything looks done. Then payroll posts, the new cost center has no GL
 mapping, and the cost lands somewhere it should not. Nobody notices until close.
 
 **What this builds.** Not an agent that "does reorgs". Two things the current process is missing:
@@ -57,7 +57,7 @@ writing to these systems correctly depends on how each treats an effective date,
 write that arrives twice, and what it can be asked afterwards to confirm the change took. A simulated
 adapter answers all three the way I imagined them — my assumptions, with a green tick beside them.
 
-*What execution would take, in order.* Real access and real behaviour first. Run in preview mode and
+*What execution would take, in order.* Real access and real behavior first. Run in preview mode and
 compare what each system says would happen against what the plan says. Establish how every step is
 verified, including the one a person keys in by hand — "the API returned 200" and "the person said
 done" are both claims, not evidence. Then a narrow write path, supervised, with an answer ready for
@@ -72,7 +72,7 @@ org graph stay. The design changes what approvers see, not what they are allowed
 **No user surfaces.** The command line is a demo surface. In production these stages sit behind the
 tools people already use — Slack for the message, an approvals surface with real identity for the
 packet, a reply in the thread for "which Sam", a ticket for the manual GL step. The file contracts
-between stages are what those surfaces attach to. The judgement is not in the surfaces.
+between stages are what those surfaces attach to. The judgment is not in the surfaces.
 
 **Not who decides the reorg.** That is not a workflow question.
 
@@ -111,7 +111,7 @@ unstructured thing named. The input is a person writing a sentence, and no amoun
 give it a fixed shape. A model earns its place there.
 
 **"The order is not codified; it is done by someone who holds the checklist in their head."** That is
-a missing source of truth, not a missing judgement call. A model does not fix it — it works the order
+a missing source of truth, not a missing judgment call. A model does not fix it — it works the order
 out again on every run, from a prompt, with nothing to diff and nobody who owns it. That is the same
 failure the runbooks already have, faster. The fix is to write the checklist down; the order then
 falls out of it.
@@ -141,7 +141,7 @@ many agents it contains. Six, of which the prototype exercises five:
 
 What is deliberately absent is **a model deciding what happens next**. The second model placement in
 the design sits exactly where the same rule puts it: the Exception Agent reads unexpected API
-responses during execution and escalates anything it cannot classify — a judgement call, with a
+responses during execution and escalates anything it cannot classify — a judgment call, with a
 person as the fallback, in a path that does not exist yet.
 
 This is also the answer to "not one-off scripts that only their authors can run": the business
@@ -173,7 +173,7 @@ append-only.
 | 2 | **Redactor** | code | Pay figures → tokens, before the model sees anything. Asking the model not to repeat a salary is a request; removing it first does not depend on the model complying. Scope stated plainly: pay formats, not personal data in general — names and team relationships stay, because the Extractor needs them. |
 | 3 | **Extractor** ★ | model | Redacted text → `ExtractionResult`. Every field is cited or explicitly unresolved, never both and never neither. Every citation must **quote**: the span lies inside the message and the words there equal the mention, character for character. Extracts *mentions*, not identities. |
 | 4 | **Resolver** | code | Mentions → canonical ids. One match resolves; zero or more than one becomes a question. Reference data carries only what an export carries — ids, names, codes, structure — and is never extended to make a match succeed. |
-| 5 | **Validator** | code | Eight rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost centre that does not exist or a target that already does; a team that does not sit in the source cost centre; more than one change of a kind. Warning: a band change that moves nothing. Info: the band move, and which roles must approve. |
+| 5 | **Validator** | code | Eight rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Warning: a band change that moves nothing. Info: the band move, and which roles must approve. |
 | 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text and puts the pay figure back only there. |
 | 7 | **Step Registry** | data | `steps.yaml`: id, system, which changes it applies to, what it requires, whether a person or an API does it, its timing rule, and how it is verified. **This is the source of truth the problem statement says does not exist.** Adding a system is an edit a controller reviews. |
 | 8 | **Plan Compiler** | code | Picks the steps this request needs and puts them in an order where nothing runs before what it depends on. Refuses a loop, or a prerequisite the request does not include. Steps run one after another. Same request, same plan, every time. |
@@ -217,7 +217,7 @@ yet.
 supplied rather than the message; what the checks found; which roles must approve. The pay figure is
 put back here and only here, because this is the only place someone is asked to approve it.
 
-**Who approves** is derived from what the request contains. Splitting a cost centre moves budget:
+**Who approves** is derived from what the request contains. Splitting a cost center moves budget:
 Finance. Changing a band changes pay: Comp/HR. A single message asking for both needs both, and
 Finance approving the whole message would be approving something Finance does not own. Cross-entity
 moves would add Legal (designed). The requester cannot approve their own request.
@@ -257,7 +257,7 @@ the shape the role description names. Rejected for the Validator and Compiler: a
 exact task adds unpredictability without adding capability, and nobody reviews the Validator's
 output, so it must not be able to be creative. Kept: the **boundaries** — the components are split
 exactly as a multi-agent design would split them. One is a model, one more would be, the rest are
-tools. *Agents where there is judgement to exercise; tools where there is not.*
+tools. *Agents where there is judgment to exercise; tools where there is not.*
 
 **Search the existing runbooks to derive the steps.** They exist, and retrieval is cheap. Rejected:
 the runbooks are stated to be inaccurate, similarity search returns the most *similar* runbook rather
@@ -266,7 +266,7 @@ reviewed. Kept: the runbooks as input to *authoring* the registry, once, with th
 checklist. That is the field work; the registry is its output.
 
 **Low-code orchestration (n8n or similar).** Offered by the assignment, and reads platform-first.
-Rejected for the prototype: the judgement lives in the contracts and the compiler, which a node graph
+Rejected for the prototype: the judgment lives in the contracts and the compiler, which a node graph
 can express but a controller cannot review. Kept as a legitimate *runtime* for connectors and
 routing. The contracts do not depend on any one vendor; the runtime is whatever the platform
 provides.
@@ -285,8 +285,8 @@ occur, lighten the review by *measured* risk class, never by model confidence.
 
 ### R1 — A wrong-but-cited request passes the gate
 
-**How it breaks.** The Extractor quotes a real span and reads it wrong: the source cost centre cited
-correctly as words, but the wrong cost centre for this team. The evidence is right; the reading is
+**How it breaks.** The Extractor quotes a real span and reads it wrong: the source cost center cited
+correctly as words, but the wrong cost center for this team. The evidence is right; the reading is
 wrong. A tired reviewer sees a plausible quote and approves.
 
 **Blast radius.** The whole reorg. Everything after the gate is a correct execution of a wrong
@@ -294,7 +294,7 @@ request, applied consistently in every system — and consistency is what makes 
 nothing disagrees and so nothing flags.
 
 **Detect.** Before the gate: the Validator checks the request against reference data — the named team
-must currently sit in the named source cost centre. That turns "the model misread it" from a
+must currently sit in the named source cost center. That turns "the model misread it" from a
 vigilance problem into a rule. At the gate: every value sits beside the words it came from, and those
 words are guaranteed to be the real ones, so the reviewer checks the value against the message rather
 than against the model's account of it. After execution: reconciliation (designed).
@@ -315,7 +315,7 @@ human-keyed step is overdue. The systems now disagree.
 
 **Blast radius.** The order shapes what is left behind; it does not make anything all-or-nothing. A
 failure mid-plan still leaves a half-applied reorg — but the order makes that state harmless and
-visible. A cost centre that exists, with GL mapped, and no workers in it yet posts nothing wrong. The
+visible. A cost center that exists, with GL mapped, and no workers in it yet posts nothing wrong. The
 reverse — workers moved, no GL mapping — is the error the problem statement describes, and ordering
 *prevents* it rather than catching it afterwards. Worst realistic case: a stalled reorg, visible.
 
@@ -364,10 +364,10 @@ propagation error. Model unavailability degrades to the status quo: a person rea
 | | |
 |---|---|
 | A1 | The platform provides a governed model gateway and some workflow runtime. The design puts the model call behind a seam that lines up with that. |
-| A2 | There is an authoritative system per entity: HR for people and orgs, finance for cost centres and GL. The Resolver needs a tiebreaker when the copies disagree. |
+| A2 | There is an authoritative system per entity: HR for people and orgs, finance for cost centers and GL. The Resolver needs a tiebreaker when the copies disagree. |
 | A3 | The Resolver can read reference data — live where an API exists, from a periodic export where it does not. The "no API" constraint applies to reads as well as writes. |
 | A4 | Requests come from an identifiable set of HR partners, so requester ≠ approver is enforceable. |
-| A5 | Approver roles: Finance for cost-centre changes, Comp/HR for compensation, Legal for cross-entity. The requesting leader is never an approver. |
+| A5 | Approver roles: Finance for cost-center changes, Comp/HR for compensation, Legal for cross-entity. The requesting leader is never an approver. |
 | A6 | A payroll-posting and period-close calendar exists and is machine-readable. Not relied on here: timing rules are carried through as policy text and no date is computed from them. |
 | A7 | API-backed systems support idempotent writes. |
 | A8 | Volume is dozens to low hundreds of reorgs a year, so cost and latency are not design constraints. One extraction measured at roughly 3,000 input and 2,000 output tokens — a few cents. |

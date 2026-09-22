@@ -17,11 +17,11 @@ here on purpose.
 WHY A SEPARATE STEP AT ALL
 
 Extraction says what the message said; the Resolver says what those words refer to. Neither knows
-whether the request makes sense. "Split the Infra cost centre so the Payments team gets its own"
+whether the request makes sense. "Split the Infra cost center so the Payments team gets its own"
 can be quoted perfectly and resolved perfectly and still be wrong, because Payments does not sit in
-the Infra cost centre. This file is the only place that catches it.
+the Infra cost center. This file is the only place that catches it.
 
-There is deliberately no rule for instruction-like content in a message. The defence that matters is
+There is deliberately no rule for instruction-like content in a message. The defense that matters is
 structural: the model has no field it could use to approve anything, so a message cannot grant
 itself approval whatever it says. A detector on top of that would be a protection we have not tested.
 """
@@ -88,7 +88,7 @@ def _required_fields(intent: ReorgIntent, reference: dict) -> list[Finding]:
 # point is not that the model is untrusted and people are trusted; it is that nothing proceeds
 # unchecked, and a person's answer is evidence like any other.
 #
-# Cost centres are deliberately excluded: rule 4 owns them, and it has to allow the new one NOT to
+# Cost centers are deliberately excluded: rule 4 owns them, and it has to allow the new one NOT to
 # exist, since creating it is the point of a split.
 # ---------------------------------------------------------------------------------------------
 _ID_SOURCE = {
@@ -116,13 +116,13 @@ def _ids_are_real(intent: ReorgIntent, reference: dict) -> list[Finding]:
 
 
 # ---------------------------------------------------------------------------------------------
-# Rule 4. The cost centre being split must exist, and the new one must not.
+# Rule 4. The cost center being split must exist, and the new one must not.
 #
-# Both halves matter, and the second is the less obvious one. A split creates a cost centre. If the
+# Both halves matter, and the second is the less obvious one. A split creates a cost center. If the
 # number someone supplied already exists, they have either mistyped it or misunderstood the
 # request, and carrying on would move people into somebody else's budget line.
 # ---------------------------------------------------------------------------------------------
-def _cost_centres(intent: ReorgIntent, reference: dict) -> list[Finding]:
+def _cost_centers(intent: ReorgIntent, reference: dict) -> list[Finding]:
     known = _ids(reference.get("cost_centers", []))
     found = []
     for i, change in enumerate(intent.changes, 1):
@@ -132,15 +132,15 @@ def _cost_centres(intent: ReorgIntent, reference: dict) -> list[Finding]:
         target = change.fields.get("target_cc")
         if source is not None and source.resolved_id and source.resolved_id not in known:
             found.append(Finding(rule_id="R_CC_EXISTS", severity=Severity.BLOCKING, change_ref=i,
-                                 message=f"source cost centre {source.resolved_id} is not in the cost-centre master"))
+                                 message=f"source cost center {source.resolved_id} is not in the cost-center master"))
         if target is not None and target.resolved_id and target.resolved_id in known:
             found.append(Finding(rule_id="R_CC_EXISTS", severity=Severity.BLOCKING, change_ref=i,
-                                 message=f"target cost centre {target.resolved_id} already exists — a split creates a new one"))
+                                 message=f"target cost center {target.resolved_id} already exists — a split creates a new one"))
     return found
 
 
 # ---------------------------------------------------------------------------------------------
-# Rule 5. The team being moved must currently sit in the cost centre being split.
+# Rule 5. The team being moved must currently sit in the cost center being split.
 #
 # The important one. Every rule before it checks that the request was read correctly; this checks
 # whether it is *true*, against what the systems of record already say. A quote proves the words
@@ -165,10 +165,10 @@ def _team_sits_in_source(intent: ReorgIntent, reference: dict) -> list[Finding]:
             # look in the wrong place.
             from_message = not (team.supplied_by or source.supplied_by)
             hint = ("the message may have been misread" if from_message
-                    else "check which team and which cost centre are meant")
+                    else "check which team and which cost center are meant")
             found.append(Finding(
                 rule_id="R_TEAM_IN_SOURCE_CC", severity=Severity.BLOCKING, change_ref=i,
-                message=(f"{org['name']} currently sits in cost centre {org['cost_center']}, "
+                message=(f"{org['name']} currently sits in cost center {org['cost_center']}, "
                          f"not {source.resolved_id} — {hint}")))
     return found
 
@@ -206,7 +206,7 @@ def _band_change(intent: ReorgIntent, reference: dict) -> list[Finding]:
 # ---------------------------------------------------------------------------------------------
 # Rule 7. Say who has to approve this, and why.
 #
-# One message can ask for two different kinds of thing. Splitting a cost centre moves budget, which
+# One message can ask for two different kinds of thing. Splitting a cost center moves budget, which
 # is Finance's decision. Changing someone's band changes their pay, which is Comp/HR's. Finance
 # approving the whole message would be approving something it does not own.
 # ---------------------------------------------------------------------------------------------
@@ -248,7 +248,7 @@ RULES = (
     _unanswered,
     _required_fields,
     _ids_are_real,
-    _cost_centres,
+    _cost_centers,
     _team_sits_in_source,
     _band_change,
     _one_change_per_kind,

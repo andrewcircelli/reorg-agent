@@ -1,6 +1,6 @@
 """The registry, and the one edge in it that the whole problem statement is about.
 
-Move workers into a cost centre before anyone has mapped it to GL accounts and their costs post to
+Move workers into a cost center before anyone has mapped it to GL accounts and their costs post to
 nothing. Nobody notices until the month closes. The registry prevents that by recording that
 `hris.reassign_workers` requires `finance.map_gl`, and these tests exist so that line cannot be
 deleted without something going red.
@@ -44,7 +44,7 @@ def without_the_edge():
 
 @pytest.fixture
 def jordan_intent():
-    """The fixture message's shape: a cost centre split and a pay change, both answered."""
+    """The fixture message's shape: a cost center split and a pay change, both answered."""
     return intent(split(), comp())
 
 
