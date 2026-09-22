@@ -72,8 +72,7 @@ def show(label, f):
         print(f"  {label:34} UNRESOLVED  ? {f.question}")
     else:
         s, e = f.source_span
-        q = f"  qty={f.quantity}" if f.quantity is not None else ""
-        print(f"  {label:34} {f.mention!r:26} span→ {text[s:e]!r}{q}")
+        print(f"  {label:34} {f.mention!r:26} span→ {text[s:e]!r}")
 
 
 show("effective_date", r.effective_date)
