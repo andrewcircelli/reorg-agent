@@ -15,7 +15,7 @@ see [Limitations](#limitations-read-this-part) and `DESIGN.md` for why that line
 ```bash
 make setup     # creates .venv, installs pinned requirements (needs Python 3.10+)
 make demo      # the whole arc, no API key needed
-make test      # 105 tests
+make test      # run the tests
 ```
 
 `make demo` needs no API key. It replays a **real** model response recorded earlier — a genuine
@@ -94,7 +94,7 @@ REFUSED: 1 blocking finding(s) outstanding — nothing to approve yet.
 
 ```
 recorded: finance approved by dana.finance
-  bound to content ef0c76189711…, reference 089aa490e714…, registry f1be8f223397…
+  bound to content 3e6160f4e10f…, reference a872d82f5fd4…, registry 7e32d2c3fb97…
   APPROVED — every required role has signed the same content.
   Any edit changes that content hash, and these approvals stop applying.
 ```
@@ -113,7 +113,7 @@ not appear in it.**
 **6. Compile the plan.** The order comes from `registry/steps.yaml`, not from anyone's memory.
 
 ```
-PLAN for intent_414fa694 — 4 steps, in order, registry f1be8f223397…
+PLAN for intent_414fa694 — 4 steps, in order, registry 7e32d2c3fb97…
   1. finance.create_cost_center           api
   2. finance.map_gl                       BY HAND   after finance.create_cost_center
   3. finance.update_reporting_hierarchy   api       after finance.map_gl
@@ -192,7 +192,8 @@ If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.
   its sender and timestamp. Two checks depend on them and both currently read a constant: the year
   for "Oct 1" comes from the message's date rather than today's clock, and the gate refuses an
   approver who is the person that sent the message.
-- **Reference data is a small fixture**, standing in for reads from the systems of record.
+- **Reference data is a small fixture**: `orgs.json` and `cost_centers.json` stand in for
+  HR and finance reads. People and job-band fixtures are outside this split-only prototype.
 - **The run directory is inspectable, not tamper-proof.** Hashes do not make a folder append-only.
 - **One fixture message is one test case**, not an accuracy claim. Growing that set from real
   reviewer corrections is the first thing to do next.

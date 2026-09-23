@@ -28,14 +28,11 @@ def resolved(entity_type, mention):
 
 # ---- exactly one match becomes an id --------------------------------------------------------
 @pytest.mark.parametrize("entity_type, mention, expected", [
-    ("worker", "Sam Okafor", "10422"),
     ("org", "Data Platform team", "org_data_platform"),
     ("org", "Priya's Data Platform team", "org_data_platform"),   # attribution stripped
     ("org", "Infrastructure", "org_infra"),
     ("cost_center", "Infra cost center", "4400"),                 # via the org code INFRA
     ("cost_center", "4410", "4410"),                              # a number is already an id
-    ("band", "L5", "L5"),
-    ("band", "l5", "L5"),                                         # case does not matter
     ("date", "Oct 1", "2026-10-01"),
 ])
 def test_a_single_match_resolves(entity_type, mention, expected):
@@ -45,19 +42,19 @@ def test_a_single_match_resolves(entity_type, mention, expected):
 
 
 # ---- anything else becomes a question --------------------------------------------------------
-def test_three_sams_is_a_question_not_a_guess():
-    """The heart of the demo. A model could pick one; this cannot, and does not try."""
-    f = resolved("worker", "Sam")
+def test_two_cost_centers_is_a_question_not_a_guess():
+    """A mention naming two orgs must not silently pick one cost center."""
+    f = resolved("cost_center", "Infra or Payments cost center")
     assert f.resolved_id is None
     assert f.unresolved and "Which one" in f.question
-    assert len(f.candidates) == 3
-    assert all(c.startswith(("10422", "20871", "10201")) for c in f.candidates)
+    assert f.candidates == ["4400", "4600"]
 
 
 def test_the_quote_survives_an_unsuccessful_lookup():
     """A failed lookup must not lose the evidence — the words are still in the message."""
-    f = resolved("worker", "Sam")
-    assert f.mention == "Sam" and f.source_span == [0, 3]
+    f = resolved("cost_center", "Infra or Payments cost center")
+    assert f.mention == "Infra or Payments cost center"
+    assert f.source_span == [0, len(f.mention)]
 
 
 def test_no_match_says_so_and_offers_nothing():

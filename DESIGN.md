@@ -87,7 +87,7 @@ queue — and the file written between each stage is the seam those attach to.
   are not built; in production they come from the event. Two design properties read them — the year
   for "Oct 1", and the refusal of an approver who is the person who sent the message. Both behave
   correctly; both are currently fed a constant.
-- **Simulated approver identity, fixture reference data, one fixture message** — one test case,
+- **Simulated approver identity, org and cost-center fixture reference data, one fixture message** — one test case,
   not an accuracy claim.
 
 ---

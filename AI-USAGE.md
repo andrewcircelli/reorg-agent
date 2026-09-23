@@ -153,9 +153,10 @@ So the sensitive-data constraint is still demonstrated — and better than befor
 is now removed once and never restored. Approving a cost center split does not require knowing
 anyone's pay, so it does not come back in the review packet either.
 
-**What that cost, stated plainly:** the directory holds three people called Sam, and the old message
-named one of them. Watching the lookup decline to choose between them was the clearest moment in the
-demo. That behavior is unchanged and still tested — it is now described rather than shown.
+**What that cost, stated plainly:** the old demo showed a lookup refusing to choose between three
+people called Sam. The split-only demo no longer needs people or job-band lookups, so their fixtures
+and lookup code were removed. Refusal to guess is still tested with a cost-center mention naming
+two different orgs; the demo itself shows the missing target question instead.
 
 **I chose not to plan multiple changes of the same type in one request, because** doing it properly
 means one step instance per change plus an answer for what happens when the third of five fails. The

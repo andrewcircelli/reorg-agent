@@ -51,11 +51,6 @@ def _contains_word(haystack: str, needle: str) -> bool:
 # One lookup per kind of value. Each returns a list of candidate ids: one means resolved, anything
 # else means ask a person.
 # ---------------------------------------------------------------------------------------------
-def _workers(mention: str, people: list[dict]) -> list[str]:
-    m = _norm(mention)
-    return [p["id"] for p in people
-            if m == _norm(p["name"]) or m in _norm(p["name"]).split()]
-
 
 def _orgs(mention: str, orgs: list[dict]) -> list[str]:
     phrase = _org_phrase(mention)
@@ -73,10 +68,6 @@ def _cost_centers(mention: str, orgs: list[dict]) -> list[str]:
             if _contains_word(m, _norm(o["name"])) or _contains_word(m, _norm(o.get("code") or ""))}
     return sorted(hits)
 
-
-def _bands(mention: str, bands: list[dict]) -> list[str]:
-    m = _norm(mention)
-    return [b["id"] for b in bands if m == _norm(b["id"])]
 
 
 def _date(mention: str, sent_at: str) -> list[str]:
@@ -99,9 +90,6 @@ def _date(mention: str, sent_at: str) -> list[str]:
 
 def _label(kind: str, ids: list[str], reference: dict) -> list[str]:
     """Candidates as a person would want to read them: the id plus enough to tell them apart."""
-    if kind == "worker":
-        by_id = {p["id"]: p for p in reference.get("people", [])}
-        return [f"{i} — {by_id[i]['name']} ({by_id[i]['org']})" if i in by_id else i for i in ids]
     if kind == "org":
         by_id = {o["id"]: o for o in reference.get("orgs", [])}
         return [f"{i} — {by_id[i]['name']}" if i in by_id else i for i in ids]
@@ -117,14 +105,10 @@ def _resolve_field(field: Field, sent_at: str, reference: dict) -> None:
         return          # the message never said it, so there is nothing here to look up
 
     kind = field.entity_type
-    if kind == "worker":
-        ids = _workers(field.mention, reference.get("people", []))
-    elif kind == "org":
+    if kind == "org":
         ids = _orgs(field.mention, reference.get("orgs", []))
     elif kind == "cost_center":
         ids = _cost_centers(field.mention, reference.get("orgs", []))
-    elif kind == "band":
-        ids = _bands(field.mention, reference.get("bands", []))
     elif kind == "date":
         ids = _date(field.mention, sent_at)
     else:

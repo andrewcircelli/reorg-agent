@@ -32,7 +32,7 @@ def _r(run: Path, name: str):
     return json.loads((run / name).read_text())
 
 
-REFERENCE_FILES = {"people", "orgs", "cost_centers", "bands"}
+REFERENCE_FILES = {"orgs", "cost_centers"}
 
 
 def _next(*lines: str) -> None:
@@ -58,8 +58,8 @@ def _reference() -> dict:
     """Load reference/*.json, and stop clearly if it is not there.
 
     Without this check a missing directory looks like a data problem rather than a setup problem:
-    every lookup would find nothing and the system would confidently report that no worker named
-    Sam exists. The usual cause is running from the wrong folder, since this path is relative."""
+    every lookup would find nothing and the system would confidently report that no org named
+    Data Platform exists. The usual cause is running from the wrong folder, since this path is relative."""
     ref = {p.stem: json.loads(p.read_text()) for p in Path("reference").glob("*.json")}
     missing = REFERENCE_FILES - ref.keys()
     if missing:

@@ -78,9 +78,7 @@ def _required_fields(intent: ReorgIntent, reference: dict) -> list[Finding]:
 # exist, since creating it is the point of a split.
 # ---------------------------------------------------------------------------------------------
 _ID_SOURCE = {
-    "worker": ("people", "people directory"),
     "org": ("orgs", "org tree"),
-    "band": ("bands", "list of bands"),
 }
 
 
