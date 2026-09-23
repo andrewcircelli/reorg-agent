@@ -1,19 +1,11 @@
-"""Stage 2 · Redactor — take the pay figures out before anything else sees the message.
+"""Stage 2 · Redactor — replace pay figures before the model sees the message.
 
-What this does and does not do, stated plainly. It replaces pay figures in the formats matched
-below. It is not general-purpose personal-data removal. Names and team relationships stay in the
-text on purpose, because the model needs them to work out what the message is asking for.
+Replace amounts matching the patterns below with tokens such as [COMP_1].
+Return the redacted message and a token-to-original-value map; the CLI saves both.
 
-WHERE THE FIGURE STILL EXISTS, STATED EXACTLY
-
-It is removed from everything downstream — the model call, the extraction, the resolved request, the
-review packet and the plan. It is not removed from the machine. Two local artifacts still hold it:
-`01_source.json`, because Intake stores the message exactly as it arrived and provenance depends on
-that, and `02_redaction_map.local.json`, the token map.
-
-Nothing reads the map. It exists so a figure could be put back if a change kind ever arrived whose
-approval turned on one — for a named role, in one place. No such kind is built, so the figure is
-removed once and never restored.
+This is not general-purpose PII removal. Unmatched amounts, names, and team relationships remain.
+Original values remain locally in 01_source.json and 02_redaction_map.local.json.
+No downstream stage reads the map or restores those values.
 """
 from __future__ import annotations
 

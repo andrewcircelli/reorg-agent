@@ -1,20 +1,12 @@
-# Step Registry — the source of truth for what a reorg requires and in what order.
+# Step Registry — proposed checklist for COST_CENTER_SPLIT.
 #
-# This file is the checklist that used to live in someone's head. It is versioned, diffable, and
-# reviewed like code. Adding a system or a rule is an edit here, not an edit to an agent prompt.
+# These business assumptions need confirmation from Finance and HR before real use.
+# The compiler selects steps using applies_to and orders them using requires, not file order.
+# actuator says whether the planned step uses an API or a person; nothing is executed here.
+# deadline and verify describe intended timing and checks; neither is evaluated or run here.
 #
-# Each step: id · system · applies_to (change kinds that trigger it) · actuator (api | human_keyed)
-#            · requires (must complete first) · deadline · verify (check run after the step)
-#
-# ⚠ The edge  hris.reassign_workers.requires: finance.map_gl  prevents the error the problem
-#   statement describes: cost posting to a cost center with no GL mapping, found weeks later at close.
-#   tests/test_registry.py detects its removal.
-#
-# Supported kind: COST_CENTER_SPLIT.
-# Extension (planned kinds, not built): COMP_CHANGE adds hris.update_comp and a Comp/HR approver;
-# TEAM_MOVE adds hris.move_supervisory_org and a planning-tool
-# headcount step; MANAGER_CHANGE adds hris.change_manager; COST_CENTER_MERGE adds
-# finance.close_old_cost_center. Each is an entry here plus a field spec in reorg/contracts.py.
+# Key dependency: GL mapping must precede worker reassignment so costs have an accounting mapping.
+# tests/test_registry.py checks that this dependency exists.
 
 version: 1
 
@@ -30,7 +22,7 @@ steps:
   - id: finance.map_gl
     system: finance
     applies_to: [COST_CENTER_SPLIT]
-    actuator: human_keyed          # no API — a person keys it in; verify runs after "done"
+    actuator: human_keyed          # no API — planned as a manual task
     requires: [finance.create_cost_center]
     deadline: before_first_payroll_posting(effective_date)
     verify: gl_mapping_exists(target_cc)

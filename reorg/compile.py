@@ -1,22 +1,14 @@
 """Stage 7 · Plan Compiler — turn an approved request into an ordered list of steps.
 
-The registry in registry/steps.yaml is the checklist that used to live in somebody's head: what a
-reorg actually requires, in which systems, and what has to happen before what. This file reads it,
-picks the steps this particular request needs, puts them in an order that respects what depends on
-what, and writes the result out.
+Select steps from registry/steps.yaml using applies_to, order them using requires, and attach the
+request's values. Produce a plan and task cards for manual steps; the CLI saves the files.
 
-There is no model here, and nothing is executed. The output is a plan: a list of steps, each with
-the values it would act on, in an order a person can read and argue with.
+There is no model here, and nothing is executed.
 
-WHY THE ORDER IS THE POINT
+The key business rule is GL mapping before worker reassignment, so workers' costs have an
+accounting mapping. tests/test_registry.py checks that the registry requires this order.
 
-The failure this system exists for is not a forgotten step; it is steps done in the wrong order,
-with nothing complaining until the month closes. Move workers into a cost center with no GL mapping
-and their costs post to nothing. So the registry records `requires`, this file will not contradict
-it, and tests/test_registry.py makes sure the load-bearing edge cannot be deleted quietly.
-
-Steps run one after another. The Plan contract has room for parallel waves and holds one step in
-each: running things side by side needs an answer for what happens when one half fails.
+The plan lists steps sequentially, with prerequisites first.
 """
 from __future__ import annotations
 

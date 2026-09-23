@@ -1,29 +1,16 @@
-"""Stage 5 · Validator — check the resolved request against the rules, and report what is wrong.
+"""Stage 5 · Validator — check the resolved request before human approval.
 
-This file answers one question: is this request safe to put in front of a person for approval?
+Read the request and reference data without changing them or calling a model.
+Check for unanswered or missing fields, unknown IDs, an invalid source or target cost center,
+a team outside the source cost center, and repeated changes of the same kind.
+Also report which role must approve: Finance for COST_CENTER_SPLIT.
 
-It never changes anything and it never asks the model anything. It reads the request and the
-reference data and returns a list of Findings. A Finding is just an observation with a severity:
+Return findings: BLOCKING prevents approval; INFO states an approval requirement.
+Passing these checks means ready for review, not approved or guaranteed correct.
+The CLI saves the findings in 05_findings.json and updates the request's status.
 
-    BLOCKING   nothing can proceed until this is dealt with
-    WARNING    proceed if you mean to, but look at this first
-    INFO       something the approver should know, not a problem
-
-There are seven rules. Each one is a small function below that takes the request and the reference
-data and returns the findings it noticed. `validate` runs them in order and collects the lot. To
-add a rule, write the function and add it to the RULES list at the bottom. There is no framework
-here on purpose.
-
-WHY A SEPARATE STEP AT ALL
-
-Extraction says what the message said; the Resolver says what those words refer to. Neither knows
-whether the request makes sense. "Split the Infra cost center so the Payments team gets its own"
-can be quoted perfectly and resolved perfectly and still be wrong, because Payments does not sit in
-the Infra cost center. This file is the only place that catches it.
-
-There is deliberately no rule for instruction-like content in a message. The defense that matters is
-structural: the model has no field it could use to approve anything, so a message cannot grant
-itself approval whatever it says. A detector on top of that would be a protection we have not tested.
+RULES lists the checks run by validate().
+For production, extend these checks and their tests as Finance and HR confirm additional rules.
 """
 from __future__ import annotations
 

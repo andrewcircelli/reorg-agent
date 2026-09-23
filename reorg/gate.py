@@ -1,26 +1,13 @@
-"""Stage 6 · Approval Gate — the place a person, and only a person, says yes.
+"""Stage 6 · Approval Gate — check and record human approval.
 
-Nothing in this file can be reached by the model. The model has no field it could use to approve
-anything, so approval is not something it can ask for, get wrong, or be tricked into. It is a
-separate step that reads the findings and refuses until the conditions are met.
+validate uses this module to set request status and build the review packet.
+approve refuses blocking findings, requester self-approval, and unneeded roles.
+compile uses it to check that every required role has a current approval.
 
-THREE RULES, AND EACH ONE IS A DIFFERENT KIND OF NO
+Each approval stores hashes of the request, reference data, and step registry.
+If any changes, that approval stops counting but remains in the history.
 
-  1. Nothing blocking may be outstanding. If the Validator found something BLOCKING, there is
-     nothing to approve yet.
-  2. The person who asked cannot be the person who approves. Jordan sent the message, so Jordan
-     cannot sign it off. This is an ordinary finance control, usually called segregation of duties.
-  3. Every role the request needs must approve, and all of them must approve THE SAME CONTENT.
-
-WHAT "THE SAME CONTENT" MEANS
-
-An approval stores three hashes: the request, the reference data it was checked against, and the
-step registry. A plan depends on all three, so an approval is a statement about a situation rather
-than a general blessing. Change any of them and earlier approvals stop applying — they are kept as
-history, not deleted, and the request needs approving again.
-
-The approver is whatever name is typed on the command line. There is no login and no identity
-provider; what is demonstrated is where the boundary sits and what it binds to, not authentication.
+Approver names and roles are supplied on the command line, not authenticated.
 """
 from __future__ import annotations
 

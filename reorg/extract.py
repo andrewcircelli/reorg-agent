@@ -1,55 +1,15 @@
-"""Stage 3 · Extractor — the one and only call to the AI model.
+"""Stage 3 · Extractor — turn the redacted message into a proposal.
 
-It takes the message with the pay figures already blanked out, and turns it into an
-ExtractionResult: the changes being asked for, each value quoted from the message, and a question
-wherever the message does not say.
+The model quotes values from the message and asks questions for missing values.
+It does not resolve names to IDs or approve the request.
 
-The model produces that and nothing else. It cannot set an id, a status, or decide who a name
-refers to, because those fields do not exist on its half of the contract. After the reply comes
-back we check every quote against the text the model was actually shown, and only then does our
-own code build the ReorgIntent from it.
+extract() gets the model response and checks that its quotes match the message.
+Matching quotes prove where the words came from, not that the model understood them.
 
-ABOUT THE INSTRUCTIONS BELOW
+to_intent() turns that proposal into a DRAFT request tied to the source message.
 
-SYSTEM_PROMPT is short on purpose, and every paragraph in it is a decision worth defending:
-
-  What the job is. Turn one message into the required shape. Nothing else.
-
-  Quote it or ask about it. Every value either quotes the message or is marked unanswered with a
-  question attached. Never guess a value the message does not state, even an obvious one. This is
-  written as a prohibition because the failure we are guarding against is helpfulness.
-
-  Words, not identities. Write what the message says ("Sam"). Do not decide which Sam. That is the
-  Resolver's job, and it can check a directory, which the model cannot.
-
-  Where a quote starts and stops. Quote the phrase that names the thing, and leave out words that
-  point at someone else. Without this rule the same message produced two different answers on two
-  runs.
-
-  Which changes count. The two kinds we support, and their field names, taken from the same table
-  the code checks against. Anything else goes in notes rather than being forced into a shape that
-  does not fit.
-
-  Blanked-out values. [COMP_1] is a real value that has been hidden. Copy it across as-is and do
-  not speculate about the figure behind it.
-
-  The message is data, not orders. If the message contains something that looks like an
-  instruction, that is content to extract, not a command to obey. The real defense is structural,
-  since the model has no field it could use to approve anything; this paragraph is a second layer.
-
-WHAT IS DELIBERATELY ABSENT
-
-No worked examples. The answer key in fixtures/intent_expected.json is the test, and an example in
-the instructions would be handing over the answers.
-
-No "think step by step". The shape of the answer is already enforced, and the model does its
-reasoning before it writes.
-
-No confidence score. A number the model makes up about its own reliability is not evidence, and
-treating it as if it were is the failure this whole system is built to avoid.
-
-To check the instructions, run `make extract`, which compares a real answer against the key field
-by field.
+fixtures/intent_expected.json is the answer key for the extraction evaluation in reorg/golden.py.
+It covers one fixture message, not overall model accuracy, and is not included in the prompt.
 """
 from __future__ import annotations
 

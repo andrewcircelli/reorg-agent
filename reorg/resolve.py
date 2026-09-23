@@ -1,33 +1,15 @@
-"""Stage 4 · Resolver — turn the words the model quoted into ids from the reference data.
+"""Stage 4 · Resolver — turn quoted names into IDs using reference data, without a model.
 
-The model gives us words. It is told never to decide who or what those words refer to, because it
-cannot look anything up. This file does the looking up, and it does it with plain string matching
-and no model involved at all.
+The CLI loads reference/*.json and passes the records here; these are local fixtures standing
+in for HR and finance data, not live database queries.
 
-The rule that matters is what happens when a lookup is not certain. Exactly one match becomes an
-id. Nothing else does. Two matches, or none, and the value stays unanswered with a question
-attached and the possible answers listed, for a person to settle. The original quote is kept
-either way, so the evidence never disappears just because the lookup got harder.
+For COST_CENTER_SPLIT, org records supply the team's ID and the source org's cost-center ID.
+Numeric cost-center mentions are used directly as IDs; the Validator checks whether they exist.
+Dates such as "Oct 1" use the year the source message was sent.
 
-WHAT THE REFERENCE DATA IS
-
-`reference/` stands in for a read from the systems of record. It only holds what such an export
-holds: ids, names, org codes, and the relationships between records. It has no list of nicknames,
-and adding one to make a match succeed is not allowed. A mention that does not resolve is supposed
-to become a question. That is the system working, not failing.
-
-WHAT EACH KIND OF VALUE MATCHES AGAINST
-
-  worker       the people directory, searched in full. A mention matches a person if it is their
-               whole name, or one part of it. So "Sam" finds three people and becomes a question.
-  org          the org tree, on name or code, after tidying the mention (see _org_phrase).
-  cost_center  a number is already an id. Otherwise we look for an org named inside the mention,
-               as in "Infra cost center", and use that org's cost center.
-  band         the list of bands.
-  date         turned into a proper date, using the year the message was sent.
-
-A value the model already marked unanswered, because the message never said it, has nothing to
-match against and is left alone for a person to fill in.
+Exactly one lookup match supplies an ID. Zero or multiple matches produce a question.
+Missing values stay unanswered, and already supplied IDs are left for the Validator to check.
+Original quotes are preserved. The CLI saves the result in 04_resolved.json after validation.
 """
 from __future__ import annotations
 
