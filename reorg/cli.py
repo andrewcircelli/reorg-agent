@@ -1,17 +1,25 @@
 """Not a stage · the command line — one subcommand per demo beat, four for seven stages. Each stage reads the previous stage's JSON and writes its own.
-The run directory is the audit trail.
+The runs directory is the audit trail.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 
 from . import compile as compile_mod
 from . import extract, gate, intake, redact, resolve, validate
-from .contracts import (Approval, Finding, ReorgIntent, Severity, SourceRecord, now_iso,
-                        sha256_of)
+from .contracts import (
+    Approval,
+    Finding,
+    ReorgIntent,
+    Severity,
+    SourceRecord,
+    sha256_of,
+)
 from .model_client import LiveClient, ReplayClient, record
 
 
@@ -35,6 +43,12 @@ def _r(run: Path, name: str):
 REFERENCE_FILES = {"orgs", "cost_centers"}
 
 
+def _banner(label: str) -> None:
+    """Separate command output and its result for terminal demos."""
+    print(f"\n── {label} " + "─" * max(0, 64 - len(label) - 4), flush=True)
+    print()
+
+
 def _next(*lines: str) -> None:
     """Print what to do next.
 
@@ -49,9 +63,12 @@ def _next(*lines: str) -> None:
 
 def _unanswered_refs(intent: ReorgIntent) -> list[str]:
     """`2.worker`, `1.target_cc` — the references --resolve takes, for the fields still open."""
-    return [f"{i}.{name}"
-            for i, change in enumerate(intent.changes, 1)
-            for name, field in change.fields.items() if field.unresolved]
+    return [
+        f"{i}.{name}"
+        for i, change in enumerate(intent.changes, 1)
+        for name, field in change.fields.items()
+        if field.unresolved
+    ]
 
 
 def _reference() -> dict:
@@ -63,8 +80,10 @@ def _reference() -> dict:
     ref = {p.stem: json.loads(p.read_text()) for p in Path("reference").glob("*.json")}
     missing = REFERENCE_FILES - ref.keys()
     if missing:
-        raise SystemExit(f"reference data not found ({', '.join(sorted(missing))}). "
-                         f"Run from the project root, where the reference/ folder is.")
+        raise SystemExit(
+            f"reference data not found ({', '.join(sorted(missing))}). "
+            f"Run from the project root, where the reference/ folder is."
+        )
     return ref
 
 
@@ -79,7 +98,9 @@ def _approvals(run: Path) -> list:
     path = run / "07_approvals.json"
     if not path.exists():
         return []
-    return [Approval.model_validate(a) for a in json.loads(path.read_text())["approvals"]]
+    return [
+        Approval.model_validate(a) for a in json.loads(path.read_text())["approvals"]
+    ]
 
 
 def cmd_capture(a):
@@ -91,18 +112,21 @@ def cmd_capture(a):
     _w(run, "01_source.json", src)
     red, mapping = redact.redact(src)
     _w(run, "02_redacted.json", red)
-    _w(run, "02_redaction_map.local.json", mapping)   # never leaves this directory
+    _w(run, "02_redaction_map.local.json", mapping)  # never leaves this directory
     client = LiveClient() if a.live else ReplayClient()
     result, meta = extract.extract(red, client)
-    _w(run, "03_extraction.json", result)          # exactly what the model produced
+    _w(run, "03_extraction.json", result)  # exactly what the model produced
     _w(run, "03_model_meta.json", meta)
     intent = extract.to_intent(result, red, src.sent_at)
-    _w(run, "03_intent.json", intent)               # workflow state, minted here — not by the model
+    _w(run, "03_intent.json", intent)  # workflow state, minted here — not by the model
     if a.record:
         p = record(meta)
         print(f"  recorded model response → {p}")
-    print(f"\nReorgIntent {intent.id}  ({'LIVE ' + meta.get('model', '') if a.live else 'replay'})")
+    print(
+        f"\nReorgIntent {intent.id}  ({'LIVE ' + meta.get('model', '') if a.live else 'replay'})"
+    )
     _print_intent(intent, red.text)
+    _banner("RESULT: DRAFT")
     _next(f"python -m reorg.cli validate {run}    — look things up and check the rules")
 
 
@@ -113,7 +137,7 @@ def cmd_validate(a):
         intent = _apply_resolutions(intent, a.resolve)
     ref = _reference()
     intent = resolve.resolve(intent, ref)
-    red_text = _r(run, "02_redacted.json")["text"]      # spans index the REDACTED text
+    red_text = _r(run, "02_redacted.json")["text"]  # spans index the REDACTED text
     findings = validate.validate(intent, ref)
     intent.status = gate.status_for(findings)
     registry_version, reference_sha256 = _context()
@@ -122,26 +146,45 @@ def cmd_validate(a):
     # Without that, `approve` could read a clean set of findings produced against data that has
     # since changed, and stamp the approval with the CURRENT hashes — an approval that looks
     # correctly bound to a situation nobody ever checked.
-    _w(run, "05_findings.json", {"registry_version": registry_version,
-                                 "reference_sha256": reference_sha256,
-                                 "findings": [f.model_dump(mode="json") for f in findings]})
-    packet = gate.render_packet(intent, findings, red_text, _approvals(run),
-                                registry_version, reference_sha256)
+    _w(
+        run,
+        "05_findings.json",
+        {
+            "registry_version": registry_version,
+            "reference_sha256": reference_sha256,
+            "findings": [f.model_dump(mode="json") for f in findings],
+        },
+    )
+    packet = gate.render_packet(
+        intent, findings, red_text, _approvals(run), registry_version, reference_sha256
+    )
     _w(run, "06_packet.md", packet)
     print()
     for f in findings:
         print(f"  {f.severity.value:9} {f.rule_id:18} {f.message}")
-    print(f"\n  status: {intent.status}")
+    _banner(f"RESULT: {intent.status}")
 
     open_fields = _unanswered_refs(intent)
     if open_fields:
-        _next(f"{len(open_fields)} question(s) need an answer from a person. Re-run with:",
-              f"python -m reorg.cli validate {run} " + " ".join(f"--resolve {r}=<value>" for r in open_fields))
+        _next(
+            f"{len(open_fields)} question(s) need an answer from a person. Re-run with:",
+            f"python -m reorg.cli validate {run} "
+            + " ".join(f"--resolve {r}=<value>" for r in open_fields),
+        )
     elif [f for f in findings if f.severity is Severity.BLOCKING]:
-        _next("blocking findings above have to be dealt with before this can be approved")
+        _next(
+            "blocking findings above have to be dealt with before this can be approved"
+        )
     else:
-        still = gate.outstanding_roles(intent, _approvals(run), registry_version, reference_sha256)
-        _next(*[f"python -m reorg.cli approve {run} --as <your name> --role {role}" for role in still])
+        still = gate.outstanding_roles(
+            intent, _approvals(run), registry_version, reference_sha256
+        )
+        _next(
+            *[
+                f"python -m reorg.cli approve {run} --as <your name> --role {role}"
+                for role in still
+            ]
+        )
 
 
 def cmd_approve(a):
@@ -158,42 +201,76 @@ def cmd_approve(a):
     # findings say what was checked and when; if the reference data or the registry has moved
     # since, those findings describe a different world and approving on them would record a
     # decision nobody made.
-    for label, was, now in (("reference data", checked.get("reference_sha256"), reference_sha256),
-                            ("step registry", checked.get("registry_version"), registry_version)):
+    for label, was, now in (
+        ("reference data", checked.get("reference_sha256"), reference_sha256),
+        ("step registry", checked.get("registry_version"), registry_version),
+    ):
         if was != now:
-            print(f"\n  REFUSED: the {label} has changed since these findings were produced "
-                  f"({str(was)[:12]}… → {now[:12]}…). Re-run validate first — what was checked is "
-                  f"not what you would be approving.")
+            print(
+                f"\n  REFUSED: the {label} has changed since these findings were produced "
+                f"({str(was)[:12]}… → {now[:12]}…). Re-run validate first — what was checked is "
+                f"not what you would be approving."
+            )
+            _banner("RESULT: REFUSED")
             sys.exit(2)
 
     try:
-        appr = gate.approve(intent, findings, src, approver=a.as_, role=a.role or a.as_,
-                            registry_version=registry_version,
-                            reference_sha256=reference_sha256)
+        appr = gate.approve(
+            intent,
+            findings,
+            src,
+            approver=a.as_,
+            role=a.role or a.as_,
+            registry_version=registry_version,
+            reference_sha256=reference_sha256,
+        )
     except gate.GateRefused as e:
         print(f"\n  REFUSED: {e}")
+        _banner("RESULT: REFUSED")
         sys.exit(2)
 
     # Earlier approvals are kept. They are history; whether they still count is decided by
     # gate.outstanding_roles, not by deleting them.
     approvals = _approvals(run) + [appr]
-    _w(run, "07_approvals.json", {"approvals": [x.model_dump(mode="json") for x in approvals]})
-    still = gate.outstanding_roles(intent, approvals, registry_version, reference_sha256)
+    _w(
+        run,
+        "07_approvals.json",
+        {"approvals": [x.model_dump(mode="json") for x in approvals]},
+    )
+    still = gate.outstanding_roles(
+        intent, approvals, registry_version, reference_sha256
+    )
     intent.status = "READY" if still else "APPROVED"
     _w(run, "04_resolved.json", intent)
     red_text = _r(run, "02_redacted.json")["text"]
-    _w(run, "06_packet.md", gate.render_packet(intent, findings, red_text, approvals,
-                                               registry_version, reference_sha256))
+    _w(
+        run,
+        "06_packet.md",
+        gate.render_packet(
+            intent, findings, red_text, approvals, registry_version, reference_sha256
+        ),
+    )
 
     print(f"\n  recorded: {appr.role} approved by {appr.approver} at {appr.ts}")
-    print(f"  bound to content {appr.intent_sha256[:12]}…, reference {appr.reference_sha256[:12]}…, "
-          f"registry {appr.registry_version[:12]}…")
+    print(
+        f"  bound to content {appr.intent_sha256[:12]}…, reference {appr.reference_sha256[:12]}…, "
+        f"registry {appr.registry_version[:12]}…"
+    )
     if still:
         print(f"  NOT YET APPROVED — still required: {', '.join(still)}")
-        _next(*[f"python -m reorg.cli approve {run} --as <their name> --role {role}" for role in still])
+        _banner("RESULT: READY — approvals outstanding")
+        _next(
+            *[
+                f"python -m reorg.cli approve {run} --as <their name> --role {role}"
+                for role in still
+            ]
+        )
     else:
-        print(f"  APPROVED — every required role has signed the same content.")
-        print("  Any edit changes that content hash, and these approvals stop applying.")
+        print("  APPROVED — every required role has signed the same content.")
+        print(
+            "  Any edit changes that content hash, and these approvals stop applying."
+        )
+        _banner("RESULT: APPROVED")
         _next(f"python -m reorg.cli compile {run}    — turn it into an ordered plan")
 
 
@@ -208,7 +285,9 @@ def cmd_compile(a):
     # or the registry changed stays in the file, and stops counting.
     still = gate.outstanding_roles(intent, _approvals(run), version, reference_sha256)
     if still:
-        print(f"\n  REFUSED: not approved as it currently stands — still required: {', '.join(still)}")
+        print(
+            f"\n  REFUSED: not approved as it currently stands — still required: {', '.join(still)}"
+        )
         for role in still:
             for old in _approvals(run):
                 if old.role != role:
@@ -221,14 +300,18 @@ def cmd_compile(a):
                     reason = "the step registry has changed since"
                 else:
                     continue
-                print(f"    {role} approved at {old.ts}, but {reason}. Re-approve to clear it.")
+                print(
+                    f"    {role} approved at {old.ts}, but {reason}. Re-approve to clear it."
+                )
                 break
+        _banner("RESULT: REFUSED")
         sys.exit(2)
 
     try:
         plan = compile_mod.compile_plan(intent, reg, version, reference_sha256)
     except (compile_mod.RegistryError, compile_mod.PlanRefused) as e:
         print(f"\n  REFUSED: {e}")
+        _banner("RESULT: REFUSED")
         sys.exit(2)
     _w(run, "08_plan.json", plan)
     tasks = compile_mod.human_tasks(plan, reg)
@@ -243,12 +326,17 @@ def cmd_compile(a):
             print(f"  {i}. {s.step_id:36} {who:8}{after}")
     for w in plan.warnings:
         print(f"  note: {w}")
-    print(f"\n  Nothing has been executed. This is a plan for people and systems to carry out.")
+    print(
+        "\n  Nothing has been executed. This is a plan for people and systems to carry out."
+    )
     if tasks:
         print(f"  {len(tasks)} step(s) need a person — see {run}/09_tasks.md")
+    _banner("RESULT: PLAN COMPILED — nothing executed")
 
 
-def _apply_resolutions(intent: ReorgIntent, items: list[str], by: str = "human:jordan.hrbp") -> ReorgIntent:
+def _apply_resolutions(
+    intent: ReorgIntent, items: list[str], by: str = "human:jordan.hrbp"
+) -> ReorgIntent:
     """Demo shortcut for Jordan's follow-up answers, scoped to one change and field:
     --resolve 1.target_cc=4410   (1-based change index, field name, canonical id).
     The original evidence is kept as extracted; no span is invented for the supplied value.
@@ -259,15 +347,21 @@ def _apply_resolutions(intent: ReorgIntent, items: list[str], by: str = "human:j
         ref, _, value = item.partition("=")
         idx, _, name = ref.partition(".")
         if not (name and value):
-            raise SystemExit(f"--resolve: expected CHANGE.FIELD=VALUE, got {item!r} "
-                             f"(for example: 1.target_cc=4410)")
+            raise SystemExit(
+                f"--resolve: expected CHANGE.FIELD=VALUE, got {item!r} "
+                f"(for example: 1.target_cc=4410)"
+            )
         if not idx.isdigit() or not 1 <= int(idx) <= len(intent.changes):
-            raise SystemExit(f"--resolve: {item!r} points at change {idx!r}, but this request has "
-                             f"{len(intent.changes)} change(s), numbered 1 to {len(intent.changes)}")
+            raise SystemExit(
+                f"--resolve: {item!r} points at change {idx!r}, but this request has "
+                f"{len(intent.changes)} change(s), numbered 1 to {len(intent.changes)}"
+            )
         ch = intent.changes[int(idx) - 1]
         if name not in ch.fields:
-            raise SystemExit(f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}' "
-                             f"(it has: {', '.join(ch.fields)})")
+            raise SystemExit(
+                f"--resolve: change {idx} ({ch.kind.value}) has no field '{name}' "
+                f"(it has: {', '.join(ch.fields)})"
+            )
         ch.fields[name].supply(value, by)
     return intent
 
@@ -281,19 +375,41 @@ def _print_intent(intent: ReorgIntent, text: str) -> None:
             if f.unresolved:
                 print(f"        {name:14} UNRESOLVED   ? {f.question}")
             else:
-                span = text[f.source_span[0]:f.source_span[1]] if f.source_span else ""
-                print(f"        {name:14} {f.mention!s:28} ← \"{span}\"")
+                span = (
+                    text[f.source_span[0] : f.source_span[1]] if f.source_span else ""
+                )
+                print(f'        {name:14} {f.mention!s:28} ← "{span}"')
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="reorg")
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("capture"); s.add_argument("message"); s.add_argument("--run", required=True)
-    s.add_argument("--live", action="store_true"); s.add_argument("--record", action="store_true"); s.set_defaults(fn=cmd_capture)
-    s = sub.add_parser("validate"); s.add_argument("run"); s.add_argument("--resolve", action="append"); s.set_defaults(fn=cmd_validate)
-    s = sub.add_parser("approve"); s.add_argument("run"); s.add_argument("--as", dest="as_", required=True); s.add_argument("--role"); s.set_defaults(fn=cmd_approve)
-    s = sub.add_parser("compile"); s.add_argument("run"); s.add_argument("--registry", default="registry/steps.yaml"); s.set_defaults(fn=cmd_compile)
-    a = p.parse_args(argv)
+    s = sub.add_parser("capture")
+    s.add_argument("message")
+    s.add_argument("--run", required=True)
+    s.add_argument("--live", action="store_true")
+    s.add_argument("--record", action="store_true")
+    s.set_defaults(fn=cmd_capture)
+    s = sub.add_parser("validate")
+    s.add_argument("run")
+    s.add_argument("--resolve", action="append")
+    s.set_defaults(fn=cmd_validate)
+    s = sub.add_parser("approve")
+    s.add_argument("run")
+    s.add_argument("--as", dest="as_", required=True)
+    s.add_argument("--role")
+    s.set_defaults(fn=cmd_approve)
+    s = sub.add_parser("compile")
+    s.add_argument("run")
+    s.add_argument("--registry", default="registry/steps.yaml")
+    s.set_defaults(fn=cmd_compile)
+    args = list(sys.argv[1:] if argv is None else argv)
+    a = p.parse_args(args)
+    command = shlex.join(["python", "-m", "reorg.cli", *args])
+    print("\n" + "═" * 64)
+    print("COMMAND")
+    print(command)
+    print("═" * 64 + "\n", flush=True)
     a.fn(a)
 
 

@@ -26,6 +26,9 @@ call, checked in, not a hand-written answer. `make extract LIVE=1` makes the cal
 
 ---
 
+Each command prints its full CLI invocation between double-line separators and a `RESULT` separator. Next-command
+suggestions appear below the result.
+
 ## The three files to open after `make demo`
 
 Everything below is generated. The run directory is the audit trail.
