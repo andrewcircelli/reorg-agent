@@ -135,7 +135,7 @@ completion *would* be confirmed — stated as a requirement, and explicitly not 
 `hris.reassign_workers` requires `finance.map_gl`. Delete that edge and workers can be moved into a
 cost center with no GL mapping — the error that surfaces weeks later at close. The obvious test does
 not catch it, which is why `tests/test_registry.py` asks the registry rather than the compiled
-order. `DESIGN.md` R3 explains why that distinction is the whole argument.
+order. `DESIGN.md` R2 explains why checking the dependency itself matters.
 
 ---
 

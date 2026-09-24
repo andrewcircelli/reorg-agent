@@ -49,336 +49,208 @@ deterministic.
 
 ### Non-goals, each with the reason
 
-**No execution, and no simulation of execution.** The prototype ends at an approved plan plus a task
-card for the step no system can do. This is the largest thing left out, and the reason is the point:
-writing to these systems correctly depends on how each treats an effective date, what it does with a
-write that arrives twice, and what it can be asked afterwards to confirm the change took. A simulated
-adapter answers all three the way I imagined them — my assumptions, with a green tick beside them.
+**No execution or simulated execution.** The prototype produces an approved plan and a task card;
+it does not update HR or finance systems. Before building those integrations, I would need to confirm
+when each system applies a dated change, how it handles a repeated request, and how to verify the
+update succeeded. I left out simulated updates because they would demonstrate my assumptions about
+those systems, rather than their actual behavior.
 
-**No model-decided control flow.** See *Where the model is used* below. This is a deliberate
-architectural position, not an omission.
+**The model does not decide what happens next.** It extracts a proposal from the message. Code
+handles lookups, validation, and approval checks; the compiler orders the plan using dependencies in
+the step registry. I chose a fixed workflow because this slice follows explicit rules rather than
+requiring an agent to discover its next action. The registry's business rules are assumptions to
+confirm with Finance and HR.
 
-**No new system of record, and no change to who approves what.** The three existing copies of the
-org graph stay. The design changes what approvers see, not what they are allowed to do.
+**Existing HR and finance systems remain authoritative; this tool coordinates changes between them.**
 
-**No user surfaces.** The command line is a demo surface. In production these stages sit behind the
-tools people already use — Slack, an approvals surface with real identity, the existing ticket
-queue — and the file written between each stage is the seam those attach to.
+**No Slack, email, approval UI, or ticketing integrations in this prototype.** The CLI demonstrates
+the workflow so implementation time stays focused on validation, approval, and planning.
 
-**Not who decides the reorg.** That is not a workflow question.
+### Built in this prototype · proposed extensions
 
-### Built · designed, not built · out of scope
-
-| | |
+| Status | Scope |
 |---|---|
-| **Built and running** | Intake · Redactor · Extractor (one real model call) · Resolver · Validator · Approval Gate · Step Registry · Plan Compiler · task card for the human-keyed step |
-| **Designed, not built** | Execution and system adapters · Exception Agent · Reconciler · channel connectors · scoped resolution · computed deadlines · the Legal gate for cross-entity moves · the other change kinds · planning-tool integration |
-| **Out of scope** | Who decides the reorg · new systems of record · changing approval authority |
+| **Built in this prototype** | Intake, redaction, extraction (live model call or recorded replay), resolution, validation, approval gate, step registry, plan compiler, and manual task card. |
+| **Proposed extensions — not built** | Execution and system integrations; exception handling and reconciliation; channel and approval interfaces; lookups scoped to the requester; calculated deadlines; additional change kinds and approval roles, including Legal for cross-entity moves. These need confirmed business rules and platform capabilities; the prototype focuses on proving the request-to-approved-plan flow. |
 
-### Limits of this version, stated plainly
+### Limits of this prototype
 
-- **One change kind**, `COST_CENTER_SPLIT`, and one change of it per request — refused rather than
-  mishandled if more arrive. Compensation appears in the fixture message as sensitive *context*
-  rather than a request, which demonstrates the handling without a second change kind to carry.
-- **The Resolver is seen resolving, not declining.** Nothing in the fixture message is ambiguous.
-  That it asks instead of guessing when a mention matches several records is real and tested, but
-  described here rather than shown on screen.
-- **Sender, channel and date are stubbed**, since the fixture is a text file and channel connectors
-  are not built; in production they come from the event. Two design properties read them — the year
-  for "Oct 1", and the refusal of an approver who is the person who sent the message. Both behave
-  correctly; both are currently fed a constant.
-- **Simulated approver identity, org and cost-center fixture reference data, one fixture message** — one test case,
-  not an accuracy claim.
+- **One cost-center split per request.** Other change kinds and multiple splits are not supported.
+- **Limited name matching.** The Resolver handles known names and numeric IDs. Phrases such as
+  "cost center 4420" can require a human to supply the ID, even when the number is in the message.
+- **Incomplete ID validation.** The source cost center must exist and the new target must not.
+  The target's ID format is not checked, so a value such as "Pittsburgh" can pass.
+- **Fixed message metadata.** Sender, channel, and date are fixture values. Real integrations
+  would supply them from the incoming message.
+- **No authenticated approvals.** Names and roles are typed into the CLI; their ownership is
+  not verified.
+- **Fixture reference data.** Local org and cost-center fixtures stand in for reads from real systems.
+- **Extraction evaluation covers one reference message.** `golden.py` compares the model output
+  against `fixtures/intent_expected.json`: change kinds, field names, quoted values, citation
+  positions, and whether fields require clarification. This provides a repeatable regression check.
+  A second message was also tested live; broader accuracy evaluation needs more cases.
 
 ---
 
 ## Approach and design
 
-### Where the model is used, and why only there
+### Follow one request
 
-Where a model belongs follows from the problem statement, not from a preference about architecture.
-Three sentences of it decide the whole shape.
+A message asks to split Infra's cost center so the Data Platform team gets its own.
 
-**"Changes arrive as freeform text… there is no structured event to subscribe to."** That is the only
-unstructured thing named. The input is a person writing a sentence, and no amount of engineering will
-give it a fixed shape. A model earns its place there.
+1. **Capture and extract.** Save the original message, replace matching pay figures with tokens,
+   and send the redacted text to the model. The model returns the exact words copied from the
+   message, with their locations recorded, or questions for missing information.
+2. **Resolve and validate.** Code looks up names in local reference data and checks the business
+   rules. When a person supplies an answer, the full validation rule set runs again; the applicable
+   checks depend on the field.
+3. **Review and approve.** Finance reads a packet showing the request, the words it came from,
+   any human answers, and the findings. Blocking findings prevent approval.
+4. **Compile the plan.** Code selects the applicable registry steps and orders them by their
+   dependencies. It produces a plan and a task card for the manual GL-mapping step. Nothing is executed.
 
-**"The order is not codified; it is done by someone who holds the checklist in their head."** That is
-a missing source of truth, not a missing judgment call. A model does not fix it — it works the order
-out again on every run, from a prompt, with nothing to diff and nobody who owns it. That is the same
-failure the runbooks already have, faster. The fix is to write the checklist down; the order then
-falls out of it.
+### Where judgment sits
 
-**"Errors surface weeks later in financial reports."** The feedback loop is one accounting period. So
-anything in the path that can answer differently on two identical runs is, in practice, never
-reviewed — nobody looks until close.
+**The model interprets the message.** Its output follows the `ExtractionResult` schema, which has
+no approval field. In “split Infra cost center into a new cost center 4420,” the model must
+understand the sentence to assign Infra to `source_cc` and the new cost center to `target_cc`.
+For each value it extracts, it returns the words and their character positions in the redacted
+message. Code checks that those positions contain exactly those words. If the model swaps source
+and target, both phrases could still pass that text check; business rules and human review provide
+further checks on the interpretation.
 
-> **The rule: a model where the input is unstructured and a person checks the output. Ordinary code
-> wherever the answer is exact and nobody checks.**
+**Code looks up records and checks the proposal.** The Resolver uses `reference/orgs.json` to
+find the team's ID and the source org's cost-center ID. Exactly one lookup match resolves; zero
+or multiple matches raise a question. Numeric cost-center mentions are taken as IDs. The Validator
+checks against the org and cost-center records, including whether the team belongs to the source
+cost center and whether the proposed target already exists. These are local fixtures, not live
+database queries. The limits above describe the matching and ID-format gaps.
 
-By that rule the Extractor is a model call and the Resolver, Validator, Gate and Compiler are not.
-"Which team" has an exact answer in a directory, and a model choosing between several matches is a
-guess in the costume of a resolution.
+**A human approves the checked request.** Finance owns approval for a cost-center split. The
+requester cannot approve their own request, although identities are simulated in this prototype.
+Approval sits after validation so the reviewer sees resolved values and known problems, and before
+compilation so a wrong request is not used to build an approved plan. Answering a clarification
+question is separate from approving the request. Redacted pay figures are not restored for review.
 
-**What "agentic" means here.** The question is which building blocks the design relies on, not how
-many agents it contains. Six, of which the prototype exercises five:
+### Building blocks used in agentic systems
 
-| Building block | Where | Built |
+The prototype uses structured model output, evidence checks, deterministic processing, and a
+separate human approval gate. These are useful in agentic systems without being exclusive to agents.
+An agent could use lookups as tools, return a proposed action in a fixed schema, and submit it to
+validation and approval before acting. Here, code fixes the sequence: the model does not choose
+tools or decide what happens next.
+
+### How the design maps to the code
+
+| Command | Components | Main outputs |
 |---|---|---|
-| The model can only answer in a fixed shape | the Extractor's only output path | ✔ |
-| A boundary the model cannot cross | the gate is not callable by the model (see *The interfaces*) | ✔ |
-| Every value carries its evidence | the words it came from, so reviewers check rather than trust | ✔ |
-| Ordinary code around the model | Resolver, Validator, Compiler | ✔ |
-| Planning metadata for safe retries and verification | every step carries a stable key and the check that ought to run after it | **metadata only.** Neither is exercised: nothing runs a step, so nothing retries one or verifies it. A stable key is a precondition for safe retry, not evidence of it — whether a system honours it is a property of that system |
-| "I don't know" goes to a person | designed: the Exception Agent's only permitted answer to a result it cannot classify | designed |
+| `capture` | `intake.py`, `redact.py`, `extract.py` | `01_source.json`, `02_redacted.json`, `03_extraction.json`, `03_intent.json` |
+| `validate` | `resolve.py`, `validate.py`, review helpers in `gate.py` | `04_resolved.json`, `05_findings.json`, `06_packet.md` |
+| `approve` | `gate.py` | `07_approvals.json`, updated `04_resolved.json` and `06_packet.md` |
+| `compile` | `compile.py`, `registry/steps.yaml` | `08_plan.json`, `09_tasks.md` |
 
-The same rule places the design's second model call, the one not built: the Exception Agent reads
-unexpected API responses during execution and escalates anything it cannot classify — a judgment
-call, with a person as the fallback.
+The Python modules above live in `reorg/`. `contracts.py` defines the objects passed between stages.
+`cli.py` coordinates the commands and saves their outputs. Capture also saves the local redaction
+map and model-call metadata.
 
-It is also the answer to "not one-off scripts that only their authors can run": the business
-knowledge lives in a file with an owner and a review process, not in a prompt and not in a script.
+Saved stage outputs provide **traceability** from the original message to the approved plan and
+support **auditability** by recording findings and approvals. They are not an immutable history:
+some files are overwritten as the request progresses, and local files can be edited.
 
-### The flow — capture → validation → propagation
+### What approval protects
 
-```
-  Slack / email / doc          freeform; no structured event to subscribe to
-        ▼
-  1 Intake  ▸  2 Redactor  ▸  3 Extractor ★MODEL  ▸  4 Resolver  ▸  5 Validator
-        ▼
-  6 Approval Gate ★HUMAN — nothing below this line happens without it
-        ▼
-  7 Plan Compiler  ▸  8 Task cards
-  ───────────────────────────────────────────────────────────────────────────
-  designed, not built: execution and adapters · Exception Agent · Reconciler · connectors
-```
+An approval in `07_approvals.json` records hashes of three things:
 
-Every arrow is a typed object written to disk. The run directory is the audit trail — inspectable,
-not tamper-proof; hashes do not make a folder append-only.
+- The resolved request, `04_resolved.json`, excluding its generated ID and status.
+- The reference data: `reference/orgs.json` and `reference/cost_centers.json`.
+- The step registry: `registry/steps.yaml`.
 
-### Components
+Before compilation, all three must still match. Changing any of them makes the earlier approval
+stop counting; the approval record remains as history. This detects changes after approval; it
+does not prove the underlying data or business rules are correct.
 
-| # | Component | Kind | What it does |
-|---|---|---|---|
-| 1 | **Intake** | code | Captures the message as a `SourceRecord`. The message's own date anchors "Oct 1" to a year — never the machine clock, so a replay next year cannot change an old result. |
-| 2 | **Redactor** | code | Pay figures → tokens, before the model sees anything. Asking the model not to repeat a salary is a request; removing it first does not depend on the model complying. Scope stated plainly: pay formats, not personal data in general — names and team relationships stay, because the Extractor needs them. |
-| 3 | **Extractor** ★ | model | Redacted text → `ExtractionResult`. Every field is cited or explicitly unresolved, never both and never neither. Every citation must **quote**: the span lies inside the message and the words there equal the mention, character for character. Extracts *mentions*, not identities. |
-| 4 | **Resolver** | code | Mentions → canonical ids. One match resolves; zero or more than one becomes a question. Reference data carries only what an export carries — ids, names, codes, structure — and is never extended to make a match succeed. |
-| 5 | **Validator** | code | Seven rules. Blocking: anything unanswered; a missing required field; an id that is not a real record *whoever supplied it*; a source cost center that does not exist or a target that already does; a team that does not sit in the source cost center; more than one change of a kind. Info: which roles must approve. |
-| 6 | **Approval Gate** ★ | human | `DRAFT → NEEDS_RESOLUTION → READY → APPROVED`. Renders the review packet from the redacted text, and binds each approval to what was approved. |
-| 7 | **Step Registry** | data | `steps.yaml`: id, system, which changes it applies to, what it requires, whether a person or an API does it, its timing rule, and how it is verified. **This is the source of truth the problem statement says does not exist.** Adding a system is an edit a controller reviews. |
-| 8 | **Plan Compiler** | code | Picks the steps this request needs and puts them in an order where nothing runs before what it depends on. Refuses a loop, or a prerequisite the request does not include. Steps run one after another. Same request, same plan, every time. |
-| 8b | **Task cards** | code | For steps no system can do: who, with which approved values, what must be true afterwards, and how that would be confirmed — written down as a requirement, not performed here. |
+### Where the step order comes from
 
-### The interfaces
+The registry is a proposed business checklist that Finance and HR must confirm. Each step states
+which change kinds it applies to (`applies_to`), its prerequisites (`requires`), and whether it
+requires an API or a person (`actuator`).
 
-Two families, kept apart on purpose.
+For this split, GL mapping must follow cost-center creation and precede worker reassignment.
+The compiler enforces those dependencies when ordering the plan. The manual task card describes
+work to carry out, not another approval; completing that work would need verification.
 
-**What the model may produce.** An effective date and a list of changes; each change has a kind and a
-list of fields. **Every value in the system is the same shape** — a name, what kind of thing it is, and
-either the words that state it plus where they are, or a question. The effective date is one of them.
-None of these carries an id, a status, or a decision about who a name refers to. **A model response
-has no field in which to say "approved"** — which is the structural answer to instruction-like text
-arriving in a freeform channel. It can become a proposal and nothing else.
+The registry also describes when work should finish and what should be checked afterward. The
+prototype records these requirements but does not calculate deadlines, execute steps, or verify
+external-system updates.
 
-**What our code owns** — the request, its fields, the findings, the approvals, the plan and its
-steps — is built *from* an extraction and never parsed out of a model response. Its version of a
-field is deliberately looser, because a system with people in it has states a model never produces:
-a mention whose lookup was ambiguous keeps its quote *and* gains a question, and a value a person
-supplied outright has no quote at all and records who supplied it. That is what lets the packet say
-*"Data Platform team → org_data_platform (answered by the HR partner) [message said "Data Platform
-team"]"* rather than implying a person invented something the message stated.
+### Where production integrations would fit
 
-### Where the human stays in the loop, and why there
+Slack or email connectors would supply messages and their actual sender and timestamp. An
+authenticated approval interface would present the review packet and record sign-off. Manual
+task cards could enter an existing ticket queue.
 
-**Gate 1 — after validation, before compilation. Mandatory.**
-
-Not earlier: a human reading raw text is the status quo, and it is the thing that does not scale.
-Not later: after compilation the human reviews a *derived* plan built on an unverified request —
-approving the consequence instead of the cause, and a wrong request compiles into a perfectly
-ordered wrong plan.
-
-Here, because the resolved request is the **smallest artifact that fully determines everything
-downstream** — small enough to check field by field against the evidence, and nothing has moved yet.
-The approver sees each value beside the words it came from, which values a person supplied rather
-than the message, what the checks found, and which roles must approve.
-
-**A redacted figure is not put back** — the packet included, since approving a cost center split does
-not require knowing anyone's pay. If a change kind ever arrives whose approval turns on a figure,
-restoring it becomes a question worth answering: for a named role, in this one place, and nowhere
-else.
-
-**Who approves** is derived from what the request contains. Splitting a cost center moves budget:
-Finance. The rule is **per change kind, not per request** — this version supports one kind and so
-derives one role, but a message asking for two different kinds would need both owners, and either
-approving alone would be approving something they do not own. Cross-entity
-moves would add Legal (designed). The requester cannot approve their own request.
-
-**What an approval binds to** — the content, the reference data it was checked against, and the
-registry version a plan would be built from. A plan does not follow from the request alone. Change
-any of the three and earlier approvals stop applying: they stay in the file as history, and the
-request needs approving again. An approval is only a control if it binds to exactly what was
-approved.
-
-**The human as actuator, not as trust boundary.** At least one target system has no API, so a person
-keys the change in. That is not an approval; it is an action that should be verified like any other.
-The task card states what must be true afterwards and how that would be confirmed. The prototype
-emits that check and does not run it, because running it needs the same real access that puts
-execution out of scope.
+Execution adapters would consume the approved plan. They would need system-specific handling of
+effective dates, repeated requests, and verification before downstream steps proceed. These
+integrations are proposed extensions, not implemented components.
 
 ---
 
 ## Alternatives considered
 
-Four that were close enough to argue about. Each is a real option; what follows is the tradeoff I
-took, not a flaw in the alternative.
+I chose a fixed workflow based on my experience with LLM production systems: use the model to
+interpret unstructured input, then make checks and approvals explicit. I did not benchmark
+alternative implementations. The relevant tradeoffs are:
 
-**Let an agent decide the order at runtime.** The flexible answer, and it adapts to cases the
-registry has not met. Worth saying plainly: **an agent can have an enforced approval gate**, and a
-reviewer can be shown a proposed plan before it runs — nothing about agentic execution forces you to
-give up control. What I traded away was repeatability. The order has an exact answer, so deriving it
-per run buys adaptability at the cost of a plan that can differ between runs of the same request,
-leaving a controller nothing stable to diff against last month's. With a feedback loop of one
-accounting period, a difference nobody spots is a difference nobody corrects. *Kept:* the model where
-there is no exact answer, plus a designed Exception Agent for the runtime judgment that does exist.
-
-**Search the existing runbooks to derive the steps.** The knowledge already exists and retrieval is
-cheap. But the assignment states those runbooks are in varying states of accuracy, and similarity
-search returns the most *similar* one rather than the correct one, with no signal saying which you
-got. Step dependencies are exact facts with an owner — written once and reviewed, not re-derived per
-run from documents nobody trusts. *Kept:* the runbooks as input to **authoring** the registry, once,
-with the people who hold the checklist. That conversation is the real work; the registry is its
-output.
-
-**Low-code orchestration (n8n or similar).** The assignment offers it, it is genuinely platform-first,
-and it removes a codebase someone has to maintain. A node graph can express these contracts and
-ordering rules. The question is what a controller reviews: the thing they most need to check is
-"does the registry still require GL mapping before workers move?", which is a question about data and
-answers better as a diff than as a canvas. *Kept:* it is a legitimate **runtime** for the channel
-connectors and routing, and nothing here stands in the way of that.
-
-**Tier the review by risk instead of gating every request.** Most reorgs are small, and asking a
-controller to approve a routine single-team split every time is how a control becomes a rubber stamp.
-The problem is timing: the only risk signal available today would be the model's confidence, which is
-its opinion of itself rather than evidence about the request. *Kept as the twelve-month path, with
-the order reversed:* gate everything, collect data on where errors actually occur, then lighten
-review for **measured** low-risk classes. Reconciliation is what produces that data, which is one
-reason it is the highest-value thing to build next.
+- **Agent-directed workflow.** An agent could investigate missing information and select actions
+  while still respecting an approval gate. For this bounded slice, I did not see enough need for
+  that flexibility to justify adding runtime decisions.
+- **Runbook retrieval.** Existing runbooks could inform the checklist, but the assignment warns
+  they may be inaccurate. I would use them with business owners to establish the registry, rather
+  than treat retrieved instructions as authoritative.
+- **Low-code orchestration.** A platform such as n8n could implement the same design. I used Python
+  to keep the rules, intermediate outputs, and tests together and easy to inspect.
 
 ---
 
 ## Risks and failure modes
 
-### R1 — A wrong-but-cited request passes the gate
+**R1 — Incorrect information is approved.** The model or a person supplies a wrong value,
+producing an incorrect plan for that request. Validation and Finance review catch some errors,
+but cannot guarantee correctness. Corrected requests must be validated and approved again;
+recovery after execution is not built.
 
-**How it breaks.** The Extractor quotes a real span and reads it wrong: the source cost center cited
-correctly as words, but the wrong cost center for this team. The evidence is right; the reading is
-wrong. A tired reviewer sees a plausible quote and approves.
-
-**Blast radius.** The whole reorg. Everything after the gate is a correct execution of a wrong
-request, applied consistently in every system — and consistency is what makes it dangerous, because
-nothing disagrees and so nothing flags.
-
-**Detect.** Before the gate: the Validator checks the request against reference data — the named team
-must currently sit in the named source cost center. That turns "the model misread it" from a
-vigilance problem into a rule. At the gate: every value sits beside the words it came from, and those
-words are guaranteed to be the real ones, so the reviewer checks the value against the message rather
-than against the model's account of it. After execution: reconciliation (designed).
-
-**Handle.** Blocking stops compilation. If a wrong request slips through anyway, the approval is
-bound to that exact request, so the remedy is a new request, a new approval and a compensating plan —
-never a silent edit.
-
-**The model being wrong is an expected input to this system rather than a failure of it** — which is
-why there is no confidence score anywhere in it, and why correctness comes from the quote, the
-directory, the rules and the gate instead.
-
-### R2 — Partial propagation
-
-**How it breaks.** One step in the plan succeeds and the next fails — an API is down, or the
-human-keyed step is overdue. The systems now disagree.
-
-**Blast radius.** The order shapes what is left behind; it does not make anything all-or-nothing,
-and it does not make every partial failure harmless. It removes one specific bad state: workers
-moved into a cost center with no GL mapping, which is the error the problem statement describes.
-Ordering *prevents* that rather than catching it afterwards.
-
-Other partial failures remain, and one is worth naming because ordering does nothing for it: worker
-reassignment is a single step over many people, so it can fail halfway and leave some moved and some
-not — with every preceding step already done. The plan does not model that, and an executor would
-have to. Best realistic case is a stalled reorg, visible. Worst is a partly-applied one that looks
-finished.
-
-**Detect and handle.** Per-step status and verification recorded in the run record; overdue human
-tasks alert their role; reconciliation on a schedule. **All three are designed, not built.** Stable
-idempotency keys are what make resume-without-re-applying possible — necessary for it, not evidence
-of it, since whether a given system honours them is an assumption to confirm.
-
-### R3 — The Step Registry is wrong
-
-**How it breaks.** A missing dependency, a wrong timing rule, a step nobody added. This is the
-assignment's own "runbooks in varying states of accuracy" — migrated into the system.
-
-**Blast radius.** Every reorg of that type, systematically. **A wrong registry is worse than a wrong
-person, because a person is inconsistent and a registry is not.** This is the highest-severity risk
-in the design and a direct consequence of its central choice.
-
-**Detect.** The registry is versioned and reviewed like code — a change is a diff a controller reads.
-It is covered by tests that fail when a load-bearing dependency is removed. Every plan records the
-registry version it was compiled from, and compiling refuses if the registry moved after approval.
-
-*The obvious version of that test does not work.* Deleting the edge leaves the compiled order
-unchanged — the two step ids happen to sort that way — so a test reading the finished order passes
-on a registry that now permits the exact error. The test asks the registry whether the dependency
-exists, which no accident of ordering can satisfy.
-
-**Handle.** Registry changes need owner approval; a plan compiled from a superseded version is
-refused; and the fix is one edit and one review, which corrects every future reorg at once. That is
-the same property as the risk, pointed the other way.
-
-### Why not prompt injection, redaction misses, or model availability
-
-Injection is bounded by construction rather than by detection: the model-facing schema has no
-approval field and the gate is not callable by the model, so instruction-like text in a message can
-only become a proposal. No detection rule is claimed and none is built. A redaction miss is real, but
-its blast radius is one value reaching an enterprise-licensed gateway — a policy breach, not a
-propagation error. Model unavailability degrades to the status quo: a person reads the message.
+**R2 — The Step Registry is wrong.** A missing dependency can affect every reorg using that
+checklist. The compiler enforces declared dependencies, tests protect the GL-mapping prerequisite,
+and registry changes make earlier approvals stop counting. **The registry remains an assumption
+until Finance and HR confirm it.** A wrong rule needs correction and owner review, followed by
+validation, approval, and compilation against the updated registry.
 
 ---
 
 ## Assumptions and open questions
 
-### Assumptions
+### Assumptions behind the prototype
 
-| | |
-|---|---|
-| A1 | The platform provides a governed model gateway and some workflow runtime. The design puts the model call behind a seam that lines up with that. |
-| A2 | There is an authoritative system per entity: HR for people and orgs, finance for cost centers and GL. The Resolver needs a tiebreaker when the copies disagree. |
-| A3 | The Resolver can read reference data — live where an API exists, from a periodic export where it does not. The "no API" constraint applies to reads as well as writes. |
-| A4 | Requests come from an identifiable set of HR partners, so requester ≠ approver is enforceable. |
-| A5 | Approver roles: Finance for cost-center changes, Comp/HR for compensation, Legal for cross-entity. The requesting leader is never an approver. Only the first is exercised, since that is the one change kind built — but the design derives the role from the kind, so the others are a table entry each. |
-| A6 | A payroll-posting and period-close calendar exists and is machine-readable. Not relied on here: timing rules are carried through as policy text and no date is computed from them. |
-| A7 | API-backed systems support idempotent writes. |
-| A8 | Volume is dozens to low hundreds of reorgs a year, so cost and latency are not design constraints. One extraction measured at roughly 3,000 input and 2,000 output tokens — a few cents. |
+- **Reference data is authoritative and current enough to use.** The prototype trusts the local
+  org and cost-center records. Hashes detect changes, not accuracy.
+- **Finance and HR confirm the registry.** The proposed steps and dependencies are assumed correct
+  for this demonstration; they need business confirmation before real use.
+- **Finance owns approval for a cost-center split, and the requester cannot self-approve.**
+  These business rules are implemented; identity authentication is not.
+- **A split creates a new cost center.** This directly drives validation: the source must exist,
+  and the target must not.
 
-### Open questions, ordered by what blocks trust first
+### Open questions
 
-1. **Which system is authoritative per entity type when the three copies disagree?** A2 is my
-   assumption; the business decides. Without it the Resolver cannot break ties.
-2. **Who owns the Step Registry, and what is its change process?** It is the source of truth the
-   problem statement says does not exist, so it needs an owner and a review step — or it becomes the
-   next inaccurate runbook.
-3. **What does the platform already provide?** Gateway, orchestration, an approvals surface, an audit
-   store. Every one of those I have drawn as a component may be a capability to adopt instead.
-4. **Can approval identity be strong enough to be a control?** A Slack reaction is not; an
-   SSO-backed action is. This decides whether Gate 1 is a real control or a gesture.
-5. **Which steps are irreversible in practice, and what compensation exists per system?** This places
-   the second gate and defines the compensating steps in the registry.
-6. **Data-handling terms at the gateway** — retention, region, PII. Does redaction suffice for
-   compensation, or must the endpoint retain nothing?
-7. **Baseline numbers** — today's time to propagate, and how often a reorg needs a correction after
-   close. Without them I can describe an improvement but not claim one. (Also: how often reorgs cross
-   legal entities, which decides whether the Legal gate is v1 or v2.)
+1. **Which system supplies each reference record, and how often is it refreshed?** Today, lookups
+   and checks trust local JSON files.
+2. **Who owns the registry and confirms its steps and dependencies?** Today, `registry/steps.yaml`
+   represents a proposed checklist that needs Finance and HR confirmation.
+3. **Who can approve, and how do we verify their identity and role?** Today, `--as` and `--role`
+   accept typed values without authentication.
+4. **What additional rules should block a request?** Today, `4400` is rejected as an existing
+   target, but `Pittsburgh` passes because ID-format rules are missing. Finance and HR need to
+   confirm the rules before they are added to the Validator.
 
 ### What I would do first, before extending any of this
 
