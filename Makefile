@@ -2,7 +2,7 @@ PY := .venv/bin/python
 PYTHON ?= python3
 RUN := runs/demo
 
-.PHONY: help setup demo test clean redacted contracts extract guard
+.PHONY: help setup demo test clean redacted extract guard
 .DEFAULT_GOAL := help
 
 # The listing below is built from the `###` and `## ` comments in this file, so it cannot drift
@@ -36,9 +36,6 @@ demo: guard  ## The whole arc, capture through approval to a compiled plan
 	$(PY) -m reorg.cli validate $(RUN) --resolve 1.target_cc=4410
 	$(PY) -m reorg.cli approve  $(RUN) --as dana.finance --role finance
 	$(PY) -m reorg.cli compile  $(RUN)
-
-contracts: guard  ## Show the rules refusing bad model output. Run this if asked what stops a bad answer
-	PYTHONPATH=. $(PY) probes/contracts.py
 
 ### While building
 
