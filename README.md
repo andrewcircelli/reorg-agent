@@ -1,220 +1,102 @@
 # reorg-agent
 
-A reorg arrives as a sentence in Slack. It has to end up correct in three systems that each hold
-their own copy of the org chart, in an order nobody has written down. This prototype captures that
-sentence, turns it into a checkable proposal, holds it at a human approval gate, and produces an
-ordered plan.
-
-**It stops at the approved plan.** No HR or finance system is written to, and none is simulated —
-see [Limitations](#limitations-read-this-part) and `DESIGN.md` for why that line is where it is.
-
----
+Turn a freeform reorg message into a checked request, a Finance approval, and an ordered plan.
+The prototype supports one cost-center split per request and produces a task card for the manual
+GL-mapping step. **Nothing is executed or simulated in HR or finance systems.**
 
 ## Run it
 
+From the repository root, with Python 3.10+ installed:
+
 ```bash
-make setup     # creates .venv, installs pinned requirements (needs Python 3.10+)
-make demo      # the whole arc, no API key needed
-make test      # run the tests
+make setup     # create .venv and install pinned dependencies; requires network access
+make demo      # replay a recorded real model response, then run the workflow
+make test      # run the test suite
 ```
 
-`make demo` needs no API key. It replays a **real** model response recorded earlier — a genuine
-call, checked in, not a hand-written answer. `make extract LIVE=1` makes the call for real, with
-`ANTHROPIC_API_KEY` in `.env`.
+**`make demo` replays a saved model response; it does not call an LLM.** The response was captured
+from a real API call and is checked into `fixtures/recorded/`. Redaction, extraction checks,
+resolution, validation, approval, and compilation still run locally. This is deliberate: reviewers
+can run the demo without supplying an API key or sending the fixture message to an external model
+service. A live-call option is provided below.
 
-`make` on its own prints every command, grouped by when you would reach for it.
+Its first approval attempt **deliberately refuses** because the target
+cost center is unanswered. `make` prints `Error 2 (ignored)` and continues: the script supplies
+`4410`, approves as Finance, and compiles the plan. This supplied answer comes from the script,
+not the model.
 
----
+Commands appear between double-line separators, followed by results and next-step suggestions.
+The default demo folder is `runs/demo`. Repeated runs overwrite stage outputs and retain earlier
+approval entries. For a separate run, use `make demo RUN=runs/demo-fresh` with an unused folder name.
+Use a new run folder to avoid confusing earlier outputs with the current attempt.
 
-Each command prints its full CLI invocation between double-line separators and a `RESULT` separator. Next-command
-suggestions appear below the result.
+## Inspect the result
 
-## The three files to open after `make demo`
-
-Everything below is generated. The run directory is the audit trail.
-
-| Open this | It shows |
+| File in `runs/demo/` | What to review |
 |---|---|
-| `runs/demo/06_packet.md` | **the review packet** — what an approver reads: every value beside the words it came from, what a person supplied, what the checks found, who has approved and who still must |
-| `runs/demo/08_plan.json` | **the plan** — the steps, in dependency order, each with the values it would act on |
-| `runs/demo/09_tasks.md` | **the task card** for the one step no system can do |
+| `06_packet.md` | Values alongside the message text, human answers, findings, and approvals |
+| `08_plan.json` | Four steps with approved values and dependency order |
+| `09_tasks.md` | Manual GL mapping: owner, instructions, expected result, and confirmation requirement |
 
----
+The order is derived from `registry/steps.yaml`. Cost-center creation precedes GL mapping;
+GL mapping precedes worker reassignment. Timing and verification requirements are recorded as
+text, not calculated or executed.
 
-## What the demo does
+Files `01_source.json` through `05_findings.json` show the original and redacted message, extraction,
+resolved request, and validation results. These support traceability, but rerunning commands
+overwrites some outputs rather than preserving every revision.
 
-The message it works from, in `fixtures/msg_jordan.txt`:
+## Run step by step
 
-> Heads up — effective Oct 1, we're splitting the Infra cost center so Priya's Data Platform team
-> gets its own. Staffing context for the split is attached; it includes Sam's current salary of
-> $215K. Let me know if I'm missing anything.
+Activate the environment after setup. These commands use a separate folder, `runs/walkthrough`;
+choose an unused name for a fresh demonstration. Run each command individually so you can inspect
+its output before continuing.
 
-**1. The salary is removed from everything downstream.** `$215K` becomes `[COMP_1]` in a
-deterministic pass before the model call, and it stays out — of the extraction, the resolved
-request, the review packet and the plan. Asking a model not to repeat a salary is a request; taking
-it out first does not depend on the model complying.
-
-Precisely: it is *not* removed from the machine. Two local files still hold it — `01_source.json`,
-because Intake stores the message exactly as it arrived and provenance depends on that, and
-`02_redaction_map.local.json`, the token map. Nothing reads the map, and no value is ever put back.
-
-**2. One model call.** Every value is either quoted from the message or raised as a question.
-
-```
-ReorgIntent intent_414fa694  (replay)
-  effective_date: Oct 1
-   [1] COST_CENTER_SPLIT
-        source_cc      Infra cost center     ← "Infra cost center"
-        target_cc      UNRESOLVED   ? What is the name or number of the new cost center…
-        team           Data Platform team    ← "Data Platform team"
+```bash
+source .venv/bin/activate
+python -m reorg.cli capture fixtures/msg_jordan.txt --run runs/walkthrough
+python -m reorg.cli validate runs/walkthrough
+python -m reorg.cli approve runs/walkthrough --as dana.finance --role finance
 ```
 
-The salary is not extracted at all — it is background, not a request, and there is no supported
-change kind for it. The instructions tell the model to treat mentions of people, pay or headcount as
-background rather than forcing them into the one supported kind, and the recorded response followed
-that instruction and said so:
+The last command intentionally exits with code 2: the missing target blocks approval. Continue with
+an explicit answer, then approve and compile:
 
-> *"Sam's current salary of [COMP_1] is mentioned as background only; compensation changes are not
-> supported in this version and were not extracted."*
-
-**3. Look the words up.** `Infra cost center` → the org code `INFRA` → cost center 4400.
-`Data Platform team` → `org_data_platform`. `Oct 1` → 2026-10-01, the year taken from when the
-message was sent rather than from today's clock. Exactly one match becomes an id; zero or several
-becomes a question with the candidates listed.
-
-**4. Check the rules, then refuse.** Seven deterministic rules, no model.
-
-```
-BLOCKING  R_UNRESOLVED      target_cc is unanswered — What is the name or number of the new cost center…
-INFO      R_REQUIRED_ROLES  approval required from finance (for COST_CENTER_SPLIT)
-
-  status: NEEDS_RESOLUTION
-
-REFUSED: 1 blocking finding(s) outstanding — nothing to approve yet.
+```bash
+python -m reorg.cli validate runs/walkthrough --resolve 1.target_cc=4410
+python -m reorg.cli approve runs/walkthrough --as dana.finance --role finance
+python -m reorg.cli compile runs/walkthrough
 ```
 
-**5. A person answers, and the owner approves.** `--resolve 1.target_cc=4410`, then:
+`validate` runs lookups and all validation rules again. It starts from `03_intent.json`, so supply
+human answers again when revalidating. Approval is tied to hashes of the resolved request,
+reference data, and registry; compilation refuses if any no longer match.
 
-```
-recorded: finance approved by dana.finance
-  bound to content 3e6160f4e10f…, reference a872d82f5fd4…, registry 7e32d2c3fb97…
-  APPROVED — every required role has signed the same content.
-  Any edit changes that content hash, and these approvals stop applying.
-```
+### Optional: a live model call
 
-An approval names three things: the content, the reference data it was checked against, and the step
-registry. Change any of them and it stops applying — it stays in the file as history, and the
-request needs approving again. Approving also requires that the findings were produced against the
-*current* reference data, so nobody signs off on checks that have gone stale.
+With the virtual environment active, capture a different message with a real model call:
 
-Finance is the only approval role this version has, because it supports one change kind. How that
-generalises is in `DESIGN.md`.
-
-Open `runs/demo/06_packet.md` here — this is what an approver actually reads, and **the salary does
-not appear in it.**
-
-**6. Compile the plan.** The order comes from `registry/steps.yaml`, not from anyone's memory.
-
-```
-PLAN for intent_414fa694 — 4 steps, in order, registry 7e32d2c3fb97…
-  1. finance.create_cost_center           api
-  2. finance.map_gl                       BY HAND   after finance.create_cost_center
-  3. finance.update_reporting_hierarchy   api       after finance.map_gl
-  4. hris.reassign_workers                api       after finance.create_cost_center, finance.map_gl
-
-  Nothing has been executed. This is a plan for people and systems to carry out.
-  1 step(s) need a person — see runs/demo/09_tasks.md
+```bash
+python -m reorg.cli capture fixtures/msg_alternative.txt --run runs/live-alternative --live
 ```
 
-**7. The step with no API becomes a task card.** `runs/demo/09_tasks.md`: who is responsible, what
-to do with which approved values, what should be true afterwards, what is waiting on it, and how
-completion *would* be confirmed — stated as a requirement, and explicitly not performed here.
+Requires `ANTHROPIC_API_KEY` in your environment or local `.env` file (see `.env.example`).
+Continue with the validation, approval, and compilation steps above, using `runs/live-alternative`.
+Resolve any questions reported by validation before approving. Only live capture calls the model.
 
-### The test that carries the argument
+For the original message's golden-set evaluation, `make extract` compares the recorded response
+with `fixtures/intent_expected.json` through `reorg/golden.py`. `make extract LIVE=1` makes and
+records a fresh call before comparing it. The answer key covers the original message only.
 
-`hris.reassign_workers` requires `finance.map_gl`. Delete that edge and workers can be moved into a
-cost center with no GL mapping — the error that surfaces weeks later at close. The obvious test does
-not catch it, which is why `tests/test_registry.py` asks the registry rather than the compiled
-order. `DESIGN.md` R2 explains why checking the dependency itself matters.
+## Scope and further reading
 
----
+- One `COST_CENTER_SPLIT` per request; no downstream execution.
+- Reference data and message metadata are fixtures. Approver names and roles are typed, not authenticated.
+- Redaction removes supported pay formats, not all PII. The original message and redaction map
+  retain sensitive values locally; downstream stages do not restore them.
+- Matching is deliberately limited, and the new target's ID format is not validated.
+- The registry is a proposed checklist requiring confirmation from Finance and HR.
 
-## Reading route
-
-Four commands run the seven stages. `cli.py` coordinates them and saves each stage's output; the
-stage modules themselves write nothing.
-
-| Command | Stages it runs |
-|---|---|
-| `capture` | Intake → Redactor → Extractor |
-| `validate` | the human's answers, if supplied → Resolver → Validator → packet |
-| `approve` | Approval Gate → updated packet |
-| `compile` | registry selection → dependency ordering → plan and task card |
-
-Then follow one message through the stage modules, in this order:
-
-| # | File | | What it decides |
-|---|---|---|---|
-| 0 | `reorg/contracts.py` | supporting | the shapes everything else passes around. Its header lists the five decisions in it — start here |
-| 1 | `reorg/intake.py` | **stage** | capture the message unchanged |
-| 2 | `reorg/redact.py` | **stage** | replace pay figures before the model sees anything |
-| 3 | `reorg/extract.py` | **stage** | the one model call. The header walks each paragraph of the prompt as a decision |
-| 4 | `reorg/resolve.py` | **stage** | words → ids, and a question whenever that is not certain |
-| 5 | `reorg/validate.py` | **stage** | seven rules; is this safe to put in front of a person? |
-| 6 | `reorg/gate.py` | **stage** | the three refusals, and what an approval is attached to |
-| 7 | `reorg/compile.py` | **stage** | select steps, order them, emit the task card |
-| — | `reorg/model_client.py` | supporting | the seam: real call, or replay of a recorded one |
-| — | `reorg/cli.py` | supporting | the four commands; reads and writes the numbered files |
-| — | `registry/steps.yaml` | data | the checklist that used to live in someone's head |
-
-If you read only two, read `contracts.py`'s header and `registry/steps.yaml`.
-
----
-
-## Limitations — read this part
-
-- **Nothing is executed, and nothing is simulated.** The prototype ends at an approved plan plus a
-  task card. Writing to the real systems depends on how each treats an effective date, a repeated
-  write, and a read-back afterwards — a simulated adapter would demonstrate my assumptions rather
-  than their systems.
-- **One kind of change**: `COST_CENTER_SPLIT`. The others are named in the contract as a roadmap and
-  rejected loudly if a model emits one. Compensation appears in the fixture message as sensitive
-  *context* rather than as a request — enough to demonstrate the handling without a second change
-  kind to explain.
-- **One change of that kind per request.** Steps are chosen per kind, so two splits in one message
-  would produce one set of steps carrying only the second. Rather than mishandle it, both the
-  validator and the compiler refuse it.
-- **The Resolver's refusal is tested, not demonstrated.** Nothing in the fixture message is
-  ambiguous, so you see it resolving rather than declining. That it asks instead of guessing when a
-  mention matches several records — or none — is covered in `tests/test_resolve.py`.
-- **Identities are simulated.** The approver is whatever name is typed after `--as`. There is no
-  login and no identity provider; what is demonstrated is where the boundary sits and what it binds
-  to, not authentication.
-- **The message's sender, channel and date are stubbed**, because the fixture is a text file and
-  channel connectors are not built. In production they come from the event — a Slack message carries
-  its sender and timestamp. Two checks depend on them and both currently read a constant: the year
-  for "Oct 1" comes from the message's date rather than today's clock, and the gate refuses an
-  approver who is the person that sent the message.
-- **Reference data is a small fixture**: `orgs.json` and `cost_centers.json` stand in for
-  HR and finance reads. People and job-band fixtures are outside this split-only prototype.
-- **The run directory is inspectable, not tamper-proof.** Hashes do not make a folder append-only.
-- **One fixture message is one test case**, not an accuracy claim. Growing that set from real
-  reviewer corrections is the first thing to do next.
-
----
-
-## How the code maps to the design
-
-`DESIGN.md` uses the same component names as the files above — Intake, Redactor, Extractor,
-Resolver, Validator, Approval Gate, Step Registry, Plan Compiler. One file per component.
-
-## How I used AI
-
-See `AI-USAGE.md` — what it drafted, what I overrode, and the eight things review caught in
-AI-written code before they could matter.
-
-## Time spent
-
-Roughly five hours against a three-to-four hour budget: about 2h15 on problem modelling and design,
-an hour of rework caused by settling the scope too late, 45 minutes of implementation, and an hour
-of review and verification. The breakdown, and what the rework cost, is in `AI-USAGE.md`.
+[DESIGN.md](DESIGN.md) explains the architecture, decisions, risks, and limitations.
+[AI-USAGE.md](AI-USAGE.md) explains AI's contribution, the decisions I directed, and how I checked
+AI-generated work.

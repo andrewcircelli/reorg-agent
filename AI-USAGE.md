@@ -1,182 +1,60 @@
-# How I used AI, and where I overrode it
+# How I used AI
 
-The assignment expects AI use and asks where it shaped a decision and where I overrode it.
+## AI's role and mine
 
-The short version: **AI wrote nearly all of the code and proposed most of the alternatives; I chose
-between them, rejected several, and verified what came back.** Some of those proposals changed my
-design — they are listed below, with what changed. Others I turned down, and those are listed too.
-The review is what makes the code mine, and this document is the evidence for that rather than an
-assertion of it.
+I used AI throughout problem framing, design, implementation, tests, code review, and documentation.
+AI generated nearly all of the code and helped revise the design. My role was to set priorities,
+question proposals, choose the scope, and check the resulting behavior through review and demos.
+Review was also AI-assisted; the examples below distinguish my questions from findings that came
+out of that process.
 
----
+AI made it practical to turn design decisions into code and tests quickly. That did not make the
+first output correct or remove the need to understand the result.
 
-## Time spent
+## Decisions I accepted or changed
 
-_Reconstructed from file and commit timestamps plus my own recollection. It is an estimate, and I
-would rather give you an honest one than a round one._
+**Accepted: separate extraction from resolution.** AI proposed that the model return the words
+from the message while ordinary code looks up the corresponding records. I accepted this after
+questioning what the Resolver would handle. The result is visible in `reorg/extract.py` and
+`reorg/resolve.py`: interpreting the sentence and choosing a reference record are separate jobs.
 
-| | |
-|---|---|
-| Problem modelling and design | **~2h 15m** — the largest block. Design work started before any code; the first commit is four hours after the first design file. |
-| Scope rework (see below) | **~1h** — self-inflicted, and the thing I would do differently |
-| Implementation | **~45m** — AI-assisted throughout, across four build phases |
-| Review, verification and the decision log | **~1h** — interleaved rather than at the end |
-| **Total** | **~5h** against a 3–4h budget |
+**Overrode: build the model integration last.** The initial AI plan put extraction after the
+deterministic stages. I moved it earlier because interpreting the message was central to the
+assignment and the least predictable component. I also required a **golden-set evaluation**:
+compare the extraction against a predefined expected result rather than judge whether it looks
+plausible. AI helped implement that requirement in `fixtures/intent_expected.json` and
+`reorg/golden.py`. The current evaluation covers one reference message.
 
-**The 45 minutes is only defensible because of the review time.** On its own it would suggest the
-prototype is trivial. What it actually means is that generating the code was never the constraint —
-deciding what to build, and then checking what came back, was.
+**Changed scope: one cost-center split, with sensitive-data handling retained.** The initial design
+covered several change kinds, including compensation and team moves. I narrowed the prototype to
+one split to fit the time budget and implement and evaluate the flow end to end. Each additional
+kind would need expected results and test messages covering its fields, missing information, and
+ambiguous wording—not just more code in `golden.py`. Compensation remains in the input as sensitive
+context: matching pay figures are removed before the model call and never restored downstream,
+because approving the split does not require them. This is targeted redaction, not general PII removal.
 
-### Where the hour of rework went, because it is the useful part
+I also accepted an AI review's recommendation to stop at an approved plan rather than simulate
+execution. Simulated updates would demonstrate assumptions about external systems rather than
+their actual behavior. `DESIGN.md` explains why the prototype stops at an approved plan.
 
-I started writing the contracts before I had settled which change types were in scope, and I wrote
-the answer key — the hand-written expected extraction that the prototype is tested against — against
-the wider scope. When I cut the scope to two change types, I paid for it twice: once in the contracts
-and once in the answer key and the script that validates it, which then referred to fields that no
-longer existed.
+## How I checked AI-generated code
 
-Those two costs are the same mistake seen twice. **The scope decision should have come before the
-artifact that tests the scope.** I also underestimated how long the answer key would take in the
-first place; writing down what a correct extraction looks like, before seeing any model output, is
-slower than it sounds and is most of what makes the prototype checkable.
+**Questioning assumptions.** I asked what happened if a person supplied an ID that did not exist.
+In the earlier, broader prototype, it reached approval without being blocked. That question exposed
+a gap: human answers needed validation too. The current split-only version checks team IDs and
+source/target cost-center rules, though target-ID format remains a documented limitation.
 
----
-
-## Where AI shaped a decision
-
-**The Resolver is a separate component from the Extractor.** My first design had the model resolve
-names against reference data in the same call. The argument that changed my mind: which record a
-name refers to has an exact answer in a directory, so a model choosing between several matches is a
-guess dressed as a resolution. That split is now the spine of the design — the Extractor says what
-the text says, the Resolver says what it refers to, the Validator says whether that is consistent.
-
-**Where a mention starts and ends.** Two identical runs cited the same team two different ways —
-`"Data Platform team"` once and `"Priya's Data Platform team"` once. Both quoted the message exactly,
-so nothing caught it, and the test was passing on a coin flip. Seeing the model's narrower reading is
-what made me articulate a rule I had not written down: *a mention is the words that name the thing,
-not the attribution around them.* I then applied that rule to both the prompt and the answer key.
-
-**Scope reduction.** An AI review of the half-built prototype argued that the finish line should be
-an approved plan rather than a simulated execution. I agreed, and that became the largest cut in the
-project, on the grounds below.
-
----
-
-## Where I overrode it
-
-**The build order.** The plan I was given built the AI last, after the deterministic parts. I
-reversed it: the extraction is both the graded piece and the highest-variance one, so it starts
-earliest and gets every leftover minute. "AI last" signals "AI optional", and on a bad day it is the
-piece that gets cut.
-
-**The answer key is written before the model runs, and is never edited to match output.** When the
-model's reading of one field disagreed with mine, the temptation was to update the key. I stated the
-boundary rule first and let both the key and the prompt follow from it — because a test revised to
-match the thing it tests has stopped being a test. The order of operations is what keeps it honest.
-
-**No automatic model fallback.** The provider's guidance is to enable server-side fallbacks so a
-refusal is re-routed to another model. I declined. A refusal on an HR message is information a human
-should see, and a silent model switch would break what the recording binds — one prompt, one input,
-one schema, one model's answer.
-
-**Never extend reference data to make a match succeed.** The org fixture originally carried an alias
-list, and adding an alias would have made an unresolved team resolve. I removed the aliases instead
-and kept only what a real export carries. Adding one converts *"I am not sure which team this is"*
-into a silent confident answer — the exact failure the system exists to prevent.
-
-**Plain over clever.** One class used an obscure Python inheritance rule to control field order. It
-worked, and it needed a paragraph to explain. I had it rewritten as an ordinary class with six
-duplicated lines, because I have to be able to defend every line of this.
-
----
-
-## What review caught that generation did not
-
-This is the honest measure of the 45 minutes. Each of these was found by reviewing AI-written code —
-several before they could ever have run:
-
-1. **The model-facing schema could not carry any fields at all.** Structured output does not accept
-   an object whose keys the model chooses; the library silently rewrote it into an object that
-   permits nothing. Every extracted field would have come back empty, the contract would have
-   *accepted* it, and the diff would have blamed the prompt. Found by checking what the library
-   actually sends, before the first live call.
-2. **A citation could point at the wrong words.** The check confirmed a span was inside the message,
-   not that the words there were the words quoted. Without that, a reviewer comparing a value against
-   its evidence is comparing the model's claim against itself.
-3. **A refusal or a truncated answer was read as an empty extraction** rather than as a failure.
-4. **A recording was bound to a version string I maintained by hand.** The schema changed shape twice
-   in one afternoon and the string never moved, so a stale recording would have replayed clean.
-5. **A human-supplied employee ID that does not exist went through to fully approved, in silence** —
-   every check in the system was aimed at the model, and people had been quietly exempted.
-6. **Two changes of the same kind collapsed into one**, keeping only the second.
-7. **An approval deadlock**: after reference data changed, re-approving could not clear the old
-   approvals, so the request could never be compiled again.
-8. **The registry safety test passed on a deliberately broken registry.** Deleting the load-bearing
-   dependency did not change the compiled order, because the two step ids happen to sort that way.
-
-Numbers 5 and 8 are the two I would point at first. One found that the design had exempted humans
-from the standard it applied to the model; the other found that the test protecting the central
-safety property was passing by luck.
-
----
-
-## Scoping decisions, in the assignment's own format
-
-**I chose not to build execution or simulated system adapters, because** their correctness depends on
-how each system treats an effective date, a write that arrives twice, and a read-back afterwards — so
-a simulated adapter would demonstrate my assumptions rather than their systems.
-
-**I chose not to let a model decide the step order, because** the order has an exact answer in the
-registry, re-deriving it per run means it can come out differently per run, and nobody reviews the
-result until the month closes.
-
-**I chose not to build a prompt-injection detector, because** the structural defense already holds —
-the model-facing schema has no approval field and the gate is not callable by the model — and a
-detector I have not tested properly would be a claim rather than a protection.
-
-**I chose to support one change type, because** a cost center split alone carries the properties
-that matter: a value the message never states, a step no system can perform, a dependency that must
-not be broken, and an approval bound to what was approved. The rest are in the contract as a roadmap
-and are rejected loudly if a model emits one.
-
-I had built two. Compensation changes came out late, and the reasoning is worth recording because it
-cut against my own instinct to keep what was already working. The second type cost about ten lines of
-code and carried three demonstrations: redaction, an ambiguous identity, and a second approver. But
-the constraint on this deliverable is not what the system can do — it is what I can explain in half
-an hour. Two types doubled what a reader has to hold for a marginal gain in what the demo shows.
-
-**Compensation stayed in the message as context rather than as a request.** It appears as *"staffing
-context… includes Sam's current salary of $215K"*. The redactor removes it before the model reads
-anything, and the model's own note on the live call confirms the boundary held: *"mentioned as
-background only; compensation changes are not supported in this version and were not extracted."*
-So the sensitive-data constraint is still demonstrated — and better than before, because the figure
-is now removed once and never restored. Approving a cost center split does not require knowing
-anyone's pay, so it does not come back in the review packet either.
-
-**What that cost, stated plainly:** the old demo showed a lookup refusing to choose between three
-people called Sam. The split-only demo no longer needs people or job-band lookups, so their fixtures
-and lookup code were removed. Refusal to guess is still tested with a cost-center mention naming
-two different orgs; the demo itself shows the missing target question instead.
-
-**I chose not to plan multiple changes of the same type in one request, because** doing it properly
-means one step instance per change plus an answer for what happens when the third of five fails. The
-validator and the compiler both refuse it rather than silently keeping the last one — a limit stated
-and enforced beats a limit discovered when half a request goes missing.
-
-**I chose not to compute deadlines from the registry's timing rules, because** that needs the real
-payroll and close calendar and its policy; the rules are carried into the plan as text instead.
-
-**I chose not to run steps in parallel, because** parallelism needs a story about what happens when
-one half fails, and serial ordering demonstrates the dependency argument without it.
-
-**I chose not to build user surfaces, because** the judgment is not in them. In production these
-stages sit behind Slack, an approvals surface with real identity, and the existing ticketing tool.
-
----
+**Separating model output from application state.** AI flagged that the initial implementation used
+`ReorgIntent` both as the model's output schema and as the application's request object, exposing
+application-owned fields such as approval status in the model's allowed response. I proposed
+splitting the two objects and directed the change; AI helped implement it. `ExtractionResult` holds
+extracted values and questions, then application code creates a `ReorgIntent` with status `DRAFT`.
+The schema issue was corrected before the first live call; it was not an observed case of the
+model approving a request.
 
 ## What I would do differently
 
-Settle the scope before writing the thing that tests it. The hour of rework above was entirely the
-cost of writing contracts and an answer key against a scope I then narrowed — and the answer key is
-exactly the artifact that should be written last against a fixed scope, not first against a moving
-one.
+I would settle the smallest end-to-end scope earlier, leaving more time to test beyond the single
+golden-set message and the quick alternative-message trial. I also would have tested prompt-injection
+attempts to see whether instructions embedded in a message could distort the extracted proposal—even
+though the model cannot directly approve it.

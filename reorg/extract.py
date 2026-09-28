@@ -11,6 +11,7 @@ to_intent() turns that proposal into a DRAFT request tied to the source message.
 fixtures/intent_expected.json is the answer key for the extraction evaluation in reorg/golden.py.
 It covers one fixture message, not overall model accuracy, and is not included in the prompt.
 """
+
 from __future__ import annotations
 
 from .contracts import ExtractionResult, RedactedText, ReorgIntent, validate_citations
@@ -39,7 +40,9 @@ effective_date is one field with `name` set to "effective_date": the date words 
 
 def extract(red: RedactedText, client: ModelClient) -> tuple[ExtractionResult, dict]:
     result, meta = client.extract(SYSTEM_PROMPT, red.text)
-    validate_citations(result, red.text)  # fail closed: a span that does not quote its mention is not evidence
+    validate_citations(
+        result, red.text
+    )  # fail closed: a span that does not quote its mention is not evidence
     return result, meta
 
 

@@ -10,13 +10,14 @@ accounting mapping. tests/test_registry.py checks that the registry requires thi
 
 The plan lists steps sequentially, with prerequisites first.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import yaml
 
-from .contracts import (HumanTask, Plan, ReorgIntent, StepDef, StepInstance, sha256_of)
+from .contracts import HumanTask, Plan, ReorgIntent, StepDef, StepInstance, sha256_of
 
 
 class RegistryError(RuntimeError):
@@ -36,7 +37,9 @@ def registry_version(path: str | Path = "registry/steps.yaml") -> str:
     return sha256_of(Path(path).read_text())
 
 
-def load_registry(path: str | Path = "registry/steps.yaml") -> tuple[list[StepDef], str]:
+def load_registry(
+    path: str | Path = "registry/steps.yaml",
+) -> tuple[list[StepDef], str]:
     """Read the registry and refuse it if it does not hold together."""
     doc = yaml.safe_load(Path(path).read_text())
     steps = [StepDef.model_validate(s) for s in doc["steps"]]
@@ -44,11 +47,15 @@ def load_registry(path: str | Path = "registry/steps.yaml") -> tuple[list[StepDe
     ids = [s.id for s in steps]
     duplicates = {i for i in ids if ids.count(i) > 1}
     if duplicates:
-        raise RegistryError(f"step id used more than once: {', '.join(sorted(duplicates))}")
+        raise RegistryError(
+            f"step id used more than once: {', '.join(sorted(duplicates))}"
+        )
     for step in steps:
         unknown = [r for r in step.requires if r not in set(ids)]
         if unknown:
-            raise RegistryError(f"{step.id} requires a step that does not exist: {', '.join(unknown)}")
+            raise RegistryError(
+                f"{step.id} requires a step that does not exist: {', '.join(unknown)}"
+            )
     return steps, registry_version(path)
 
 
@@ -93,15 +100,19 @@ def order(steps: list[StepDef]) -> list[StepDef]:
         if outside:
             raise RegistryError(
                 f"{step.id} requires {', '.join(outside)}, which this request does not include — "
-                f"the plan would skip a prerequisite")
+                f"the plan would skip a prerequisite"
+            )
 
     ordered: list[StepDef] = []
     done: set[str] = set()
     while remaining:
-        available = sorted(i for i, reqs in needed.items() if reqs <= done and i in remaining)
+        available = sorted(
+            i for i, reqs in needed.items() if reqs <= done and i in remaining
+        )
         if not available:
             raise RegistryError(
-                f"these steps depend on each other in a loop: {', '.join(sorted(remaining))}")
+                f"these steps depend on each other in a loop: {', '.join(sorted(remaining))}"
+            )
         chosen = available[0]
         ordered.append(remaining.pop(chosen))
         done.add(chosen)
@@ -114,7 +125,10 @@ def _params(step: StepDef, intent: ReorgIntent) -> dict:
     A step receives the values of the changes that triggered it, plus the effective date. Where a
     value was looked up it carries the id; where it was never looked up — the pay figure — it
     carries the redacted token, so the plan never holds the real number."""
-    params = {"effective_date": intent.effective_date.resolved_id or intent.effective_date.mention}
+    params = {
+        "effective_date": intent.effective_date.resolved_id
+        or intent.effective_date.mention
+    }
     for change in intent.changes:
         if change.kind in step.applies_to:
             for name, field in change.fields.items():
@@ -122,8 +136,9 @@ def _params(step: StepDef, intent: ReorgIntent) -> dict:
     return params
 
 
-def compile_plan(intent: ReorgIntent, registry: list[StepDef], version: str,
-                 reference_sha256: str) -> Plan:
+def compile_plan(
+    intent: ReorgIntent, registry: list[StepDef], version: str, reference_sha256: str
+) -> Plan:
     """Build the ordered plan for one approved request."""
     # Steps are chosen per kind of change, so one step would have to stand for several changes of
     # the same kind and could only carry one set of values. The Validator blocks this before anyone
@@ -134,7 +149,8 @@ def compile_plan(intent: ReorgIntent, registry: list[StepDef], version: str,
     if repeated:
         raise PlanRefused(
             f"this request has more than one change of the same kind ({', '.join(repeated)}), and a "
-            f"plan would carry only the last of each. Split them into separate requests.")
+            f"plan would carry only the last of each. Split them into separate requests."
+        )
 
     chosen = order(select(registry, intent))
     intent_sha256 = intent.fingerprint()
@@ -152,18 +168,31 @@ def compile_plan(intent: ReorgIntent, registry: list[StepDef], version: str,
             deadline=step.deadline,
             # The same request, registry and values always produce the same key. Running the
             # compiler twice gives an identical plan rather than a second set of steps.
-            idempotency_key=sha256_of(f"{intent_sha256}\n{step.id}\n{sha256_of(params)}")[:16],
+            idempotency_key=sha256_of(
+                f"{intent_sha256}\n{step.id}\n{sha256_of(params)}"
+            )[:16],
         )
-        waves.append([instance])          # one step per wave: see the note at the top of this file
+        waves.append(
+            [instance]
+        )  # one step per wave: see the note at the top of this file
         if step.deadline:
-            warnings.append(f"{step.id} has a timing rule in the registry: {step.deadline}. "
-                            f"This prototype records it and does not work out a date from it.")
+            warnings.append(
+                f"{step.id} has a timing rule in the registry: {step.deadline}. "
+                f"This prototype records it and does not work out a date from it."
+            )
         if step.actuator == "human_keyed":
-            warnings.append(f"{step.id} has no API and has to be keyed in by a person — "
-                            f"see the task card.")
+            warnings.append(
+                f"{step.id} has no API and has to be keyed in by a person — "
+                f"see the task card."
+            )
 
-    return Plan(intent_sha256=intent_sha256, registry_version=version,
-                reference_sha256=reference_sha256, waves=waves, warnings=warnings)
+    return Plan(
+        intent_sha256=intent_sha256,
+        registry_version=version,
+        reference_sha256=reference_sha256,
+        waves=waves,
+        warnings=warnings,
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -176,9 +205,13 @@ def compile_plan(intent: ReorgIntent, registry: list[StepDef], version: str,
 # ---------------------------------------------------------------------------------------------
 def human_tasks(plan: Plan, registry: list[StepDef]) -> list[HumanTask]:
     by_id = {s.id: s for s in registry}
-    waiting_on = {s.step_id: [w.step_id for wave in plan.waves for w in wave
-                              if s.step_id in w.requires]
-                  for wave in plan.waves for s in wave}
+    waiting_on = {
+        s.step_id: [
+            w.step_id for wave in plan.waves for w in wave if s.step_id in w.requires
+        ]
+        for wave in plan.waves
+        for s in wave
+    }
 
     tasks = []
     for wave in plan.waves:
@@ -186,17 +219,23 @@ def human_tasks(plan: Plan, registry: list[StepDef]) -> list[HumanTask]:
             if instance.actuator != "human_keyed":
                 continue
             step = by_id[instance.step_id]
-            values = ", ".join(f"{k}={v}" for k, v in sorted(instance.params.items()) if v)
+            values = ", ".join(
+                f"{k}={v}" for k, v in sorted(instance.params.items()) if v
+            )
             blocked = waiting_on.get(instance.step_id) or []
-            tasks.append(HumanTask(
-                step_id=instance.step_id,
-                assignee_role=f"{step.system} operations",
-                instructions=f"{step.description} Values from the approved request: {values}.",
-                expected_state=step.verify or "not stated in the registry",
-                verify=("A fresh read-back from the system, or evidence checked by someone other "
-                        "than the person who keyed it in. This prototype does not perform that check."),
-                due=step.deadline,
-            ))
+            tasks.append(
+                HumanTask(
+                    step_id=instance.step_id,
+                    assignee_role=f"{step.system} operations",
+                    instructions=f"{step.description} Values from the approved request: {values}.",
+                    expected_state=step.verify or "not stated in the registry",
+                    verify=(
+                        "A fresh read-back from the system, or evidence checked by someone other "
+                        "than the person who keyed it in. This prototype does not perform that check."
+                    ),
+                    due=step.deadline,
+                )
+            )
             if blocked:
                 tasks[-1].instructions += f" Waiting on this: {', '.join(blocked)}."
     return tasks
@@ -205,14 +244,21 @@ def human_tasks(plan: Plan, registry: list[StepDef]) -> list[HumanTask]:
 def render_task_cards(tasks: list[HumanTask]) -> str:
     if not tasks:
         return "# Tasks for people\n\nNone — every step in this plan has an API.\n"
-    out = ["# Tasks for people", "",
-           "Steps in this plan that no system can do on its own.", ""]
+    out = [
+        "# Tasks for people",
+        "",
+        "Steps in this plan that no system can do on its own.",
+        "",
+    ]
     for task in tasks:
-        out += [f"## {task.step_id}", "",
-                f"- **Who**: {task.assignee_role}",
-                f"- **Do**: {task.instructions}",
-                f"- **Afterwards this should be true**: `{task.expected_state}`",
-                f"- **How that gets confirmed**: {task.verify}"]
+        out += [
+            f"## {task.step_id}",
+            "",
+            f"- **Who**: {task.assignee_role}",
+            f"- **Do**: {task.instructions}",
+            f"- **Afterwards this should be true**: `{task.expected_state}`",
+            f"- **How that gets confirmed**: {task.verify}",
+        ]
         if task.due:
             out.append(f"- **Timing rule from the registry**: {task.due}")
         out.append("")
