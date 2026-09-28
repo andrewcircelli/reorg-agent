@@ -84,6 +84,8 @@ the workflow so implementation time stays focused on validation, approval, and p
   would supply them from the incoming message.
 - **No authenticated approvals.** Names and roles are typed into the CLI; their ownership is
   not verified.
+- **Edits between validation and approval are not detected.** Manually editing `04_resolved.json`
+  can allow approval using stale findings; rerun `validate` with the intended answers before approving.
 - **Fixture reference data.** Local org and cost-center fixtures stand in for reads from real systems.
 - **Extraction evaluation covers one reference message.** `golden.py` compares the model output
   against `fixtures/intent_expected.json`: change kinds, field names, quoted values, citation
