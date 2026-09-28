@@ -41,7 +41,7 @@ deterministic.
 
 - Capture a reorg from freeform text, with no new form and no change to how people ask for things.
 - Make every extracted value checkable against the words it came from.
-- Make "I don't know" a first-class outcome — an unanswered question rather than a guess.
+- Flag missing information and ask for clarification instead of guessing.
 - Put the human approval at the point where it has the most leverage, and bind it to what was
   approved.
 - Replace the checklist in someone's head with a reviewable file, and compute the order from it.
